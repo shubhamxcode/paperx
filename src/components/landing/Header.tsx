@@ -1,7 +1,6 @@
 import Link from "next/link";
-import { cn } from "@/lib/utils";
+
 import { TrendingUp } from "lucide-react";
-import React from "react";
 
 export function Header() {
   const navItems = [
@@ -32,9 +31,9 @@ export function Header() {
       </nav>
 
       <div className="flex items-center gap-4">
-        <button className="px-6 py-2 rounded-full text-sm font-medium text-white border border-white/20 hover:bg-white/10 transition-colors">
+        <Link href="/login" className="px-6 py-2 rounded-full text-sm font-medium text-white border border-white/20 hover:bg-white/10 transition-colors">
           Log in
-        </button>
+        </Link>
       </div>
     </header>
   );
