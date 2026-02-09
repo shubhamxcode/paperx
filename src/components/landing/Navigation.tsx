@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 
 export const Navigation = () => {
   return (
@@ -16,6 +17,9 @@ export const Navigation = () => {
           <div
             className="logo"
             style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "12px",
               fontFamily: "Archivo, sans-serif",
               fontWeight: 800,
               fontSize: "24px",
@@ -26,7 +30,18 @@ export const Navigation = () => {
               color: "var(--paper)",
             }}
           >
-            PAPERTRADE_SYS
+       <Image
+  src="/Logo.png"
+  alt="PaperX Logo"
+  width={32}
+  height={32}
+  style={{
+    objectFit: "contain",
+    borderRadius: "50%", // 👈 makes it round
+  }}
+/>
+
+            PaperX
           </div>
         </Link>
         <div className="nav-links" style={{ display: "flex" }}>

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 
 export const Footer = () => {
   return (
@@ -25,7 +26,9 @@ export const Footer = () => {
           <div
             className="logo"
             style={{
-              display: "inline-block",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "12px",
               borderColor: "var(--paper)",
               color: "var(--paper)",
               marginBottom: "24px",
@@ -38,7 +41,14 @@ export const Footer = () => {
               background: "transparent",
             }}
           >
-            PAPERTRADE_SYS
+            <Image
+              src="/Logo.png"
+              alt="PaperX Logo"
+              width={32}
+              height={32}
+              style={{ objectFit: "contain", filter: "invert(1)" }}
+            />
+            PaperX
           </div>
           <p
             style={{

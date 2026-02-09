@@ -11,7 +11,7 @@ export const CallToAction = () => {
     >
       <h2 style={{ marginBottom: "24px" }}>Ready to enter the market?</h2>
       <p style={{ margin: "0 auto 48px auto" }}>
-        Join 50,000+ traders building their edge in the PaperTrade simulation.
+        Join 50,000+ traders building their edge in the PaperX simulation.
       </p>
       <Link href="/login">
         <button
