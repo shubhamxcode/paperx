@@ -5,7 +5,6 @@ import {
   text,
   timestamp,
   boolean,
-  numeric,
 } from "drizzle-orm/pg-core";
 import type { AdapterAccountType } from "@auth/core/adapters";
 
@@ -92,71 +91,6 @@ export const authenticators = pgTable(
 );
 
 // =============================================
-// Custom User Profile Table
-// =============================================
-
-export const userProfiles = pgTable("user_profile", {
-  id: text("id")
-    .primaryKey()
-    .$defaultFn(() => crypto.randomUUID()),
-  userId: text("userId")
-    .notNull()
-    .unique()
-    .references(() => users.id, { onDelete: "cascade" }),
-  displayName: text("displayName"),
-  bio: text("bio"),
-  phone: text("phone"),
-  avatarUrl: text("avatarUrl"),
-  createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt", { mode: "date" }).defaultNow().notNull(),
-});
-
-// =============================================
-// App Tables (Paper Trading)
-// =============================================
-
-export const portfolios = pgTable("portfolio", {
-  id: text("id")
-    .primaryKey()
-    .$defaultFn(() => crypto.randomUUID()),
-  userId: text("userId")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  name: text("name").default("Main Portfolio").notNull(),
-  balance: numeric("balance", { precision: 15, scale: 2 })
-    .default("100000.00")
-    .notNull(),
-  createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
-});
-
-export const trades = pgTable("trade", {
-  id: text("id")
-    .primaryKey()
-    .$defaultFn(() => crypto.randomUUID()),
-  portfolioId: text("portfolioId")
-    .notNull()
-    .references(() => portfolios.id, { onDelete: "cascade" }),
-  symbol: text("symbol").notNull(),
-  type: text("type").$type<"buy" | "sell">().notNull(),
-  quantity: integer("quantity").notNull(),
-  price: numeric("price", { precision: 15, scale: 2 }).notNull(),
-  executedAt: timestamp("executedAt", { mode: "date" }).defaultNow().notNull(),
-});
-
-export const holdings = pgTable("holding", {
-  id: text("id")
-    .primaryKey()
-    .$defaultFn(() => crypto.randomUUID()),
-  portfolioId: text("portfolioId")
-    .notNull()
-    .references(() => portfolios.id, { onDelete: "cascade" }),
-  symbol: text("symbol").notNull(),
-  quantity: integer("quantity").notNull(),
-  averageCost: numeric("averageCost", { precision: 15, scale: 2 }).notNull(),
-  updatedAt: timestamp("updatedAt", { mode: "date" }).defaultNow().notNull(),
-});
-
-// =============================================
 // Type Exports (for use in app)
 // =============================================
 
@@ -164,7 +98,3 @@ export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type Account = typeof accounts.$inferSelect;
 export type Session = typeof sessions.$inferSelect;
-export type UserProfile = typeof userProfiles.$inferSelect;
-export type Portfolio = typeof portfolios.$inferSelect;
-export type Trade = typeof trades.$inferSelect;
-export type Holding = typeof holdings.$inferSelect;
