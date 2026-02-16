@@ -12,10 +12,10 @@ export default function Login() {
 
   useEffect(() => {
     if (session) {
-      router.push("/");
+      router.push("/dashboard");
     }
-  }, [session, router]);
-
+  }, [session, router]);        
+  console.log(`there isa a session here:`,session);
   return (
     <div className="relative min-h-screen flex flex-col items-center justify-center bg-black overflow-hidden selection:bg-[#00d8ff] selection:text-black">
       {/* Background Effects (reused from Hero for consistency) */}
