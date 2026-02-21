@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
                 { status: 401 }
             );
         }
-
+        
         const searchParams = req.nextUrl.searchParams;
         const instrumentKeys = searchParams.getAll("instrument_key");
 

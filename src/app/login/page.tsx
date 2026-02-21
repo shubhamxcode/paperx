@@ -14,24 +14,24 @@ export default function Login() {
     if (session) {
       router.push("/dashboard");
     }
-  }, [session, router]);        
-  console.log(`there isa a session here:`,session);
+  }, [session, router]);
+  console.log(`there isa a session here:`, session);
   return (
     <div className="relative min-h-screen flex flex-col items-center justify-center bg-black overflow-hidden selection:bg-[#00d8ff] selection:text-black">
       {/* Background Effects (reused from Hero for consistency) */}
       <div className="absolute inset-0 z-0 pointer-events-none">
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[600px] bg-[#00d8ff]/10 blur-[120px] rounded-full opacity-20" />
-        
+
         {/* Grid Floor */}
-        <div className="absolute bottom-0 left-0 right-0 h-[300px] perspective-grid opacity-20" 
-             style={{
-               background: `linear-gradient(transparent 0%, #00d8ff 100%), 
+        <div className="absolute bottom-0 left-0 right-0 h-[300px] perspective-grid opacity-20"
+          style={{
+            background: `linear-gradient(transparent 0%, #00d8ff 100%), 
                             linear-gradient(90deg, rgba(0, 216, 255, 0.1) 1px, transparent 1px),
                             linear-gradient(rgba(0, 216, 255, 0.1) 1px, transparent 1px)`,
-               backgroundSize: '100% 100%, 50px 50px, 50px 50px',
-               transform: 'perspective(500px) rotateX(60deg)',
-               transformOrigin: 'bottom'
-             }} 
+            backgroundSize: '100% 100%, 50px 50px, 50px 50px',
+            transform: 'perspective(500px) rotateX(60deg)',
+            transformOrigin: 'bottom'
+          }}
         />
       </div>
 
@@ -83,9 +83,9 @@ export default function Login() {
           </div>
 
           <div className="space-y-4">
-             <div className="p-3 rounded-lg bg-[#00d8ff]/5 border border-[#00d8ff]/20 text-xs text-[#00d8ff] text-center">
-               By continuing, you agree to our Terms of Service and Privacy Policy.
-             </div>
+            <div className="p-3 rounded-lg bg-[#00d8ff]/5 border border-[#00d8ff]/20 text-xs text-[#00d8ff] text-center">
+              By continuing, you agree to our Terms of Service and Privacy Policy.
+            </div>
           </div>
         </div>
 

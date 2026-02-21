@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
                 new URL("/login?error=unauthorized", req.url)
             );
         }
-
+        
         const userId = session.user.id;
         const searchParams = req.nextUrl.searchParams;
         const code = searchParams.get("code");

@@ -9,7 +9,6 @@ import type {
 import {
     getUpstoxToken,
     saveUpstoxToken,
-    isTokenExpired,
 } from "@/db/upstox";
 
 export class UpstoxClient {
@@ -196,7 +195,6 @@ export class UpstoxClient {
         data?: any
     ): Promise<T> {
         const accessToken = await this.getValidAccessToken();
-
         const response = await this.axiosInstance.request<T>({
             method,
             url: endpoint,
@@ -212,19 +210,21 @@ export class UpstoxClient {
     /**
      * Get market quotes for instruments
      */
+
+
     async getMarketQuotes(instrumentKeys: string[]): Promise<{ data: { [key: string]: MarketQuote } }> {
         const params = new URLSearchParams();
         instrumentKeys.forEach((key) => params.append("instrument_key", key));
-
+             console.log(instrumentKeys)
         return this.makeAuthenticatedRequest<{ data: { [key: string]: MarketQuote } }>(
             "GET",
             `/v2/market-quote/quotes?${params.toString()}`
         );
     }
-
     /**
      * Get OHLC data for instruments
      */
+
     async getOHLC(instrumentKeys: string[]): Promise<{ data: { [key: string]: OHLCQuote } }> {
         const params = new URLSearchParams();
         instrumentKeys.forEach((key) => params.append("instrument_key", key));
