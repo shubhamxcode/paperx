@@ -1,22 +1,13 @@
 export const Features = () => {
   return (
     <div className="container" style={{ padding: 0 }}>
-      <div
-        className="grid grid-3 features-section"
-        style={{
-          display: "grid",
-          gap: 0,
-          borderTop: "var(--border-width) solid var(--ink)",
-          borderBottom: "var(--border-width) solid var(--ink)",
-          gridTemplateColumns: "repeat(3, 1fr)",
-        }}
-      >
+      {/* 3-column feature cards — CSS class handles responsive columns */}
+      <div className="features-section">
         <div
           className="feature-card"
           style={{
-            borderRight: "var(--border-width) solid var(--ink)",
-            padding: "64px 32px",
-            minHeight: "400px",
+            padding: "clamp(32px, 5vw, 64px) 32px",
+            minHeight: "clamp(280px, 40vw, 400px)",
             display: "flex",
             flexDirection: "column",
             justifyContent: "space-between",
@@ -48,12 +39,12 @@ export const Features = () => {
             the opening bell with zero financial risk.
           </p>
         </div>
+
         <div
           className="feature-card"
           style={{
-            borderRight: "var(--border-width) solid var(--ink)",
-            padding: "64px 32px",
-            minHeight: "400px",
+            padding: "clamp(32px, 5vw, 64px) 32px",
+            minHeight: "clamp(280px, 40vw, 400px)",
             display: "flex",
             flexDirection: "column",
             justifyContent: "space-between",
@@ -88,12 +79,12 @@ export const Features = () => {
             psychological triggers and win/loss ratios.
           </p>
         </div>
+
         <div
           className="feature-card"
           style={{
-            borderRight: "none",
-            padding: "64px 32px",
-            minHeight: "400px",
+            padding: "clamp(32px, 5vw, 64px) 32px",
+            minHeight: "clamp(280px, 40vw, 400px)",
             display: "flex",
             flexDirection: "column",
             justifyContent: "space-between",
@@ -127,19 +118,13 @@ export const Features = () => {
         </div>
       </div>
 
-      <div
-        className="grid grid-2"
-        style={{
-          display: "grid",
-          gap: 0,
-          borderBottom: "1px solid var(--ink)",
-          gridTemplateColumns: "1fr 1fr",
-        }}
-      >
+      {/* 2-column stats — CSS class handles responsive columns */}
+      <div className="features-grid-2">
         <div
           className="block"
           style={{
             borderRight: "var(--border-width) solid var(--ink)",
+            borderBottom: "1px solid var(--ink)",
             padding: "calc(var(--unit) * 4)",
             position: "relative",
             background: "var(--paper)",
@@ -149,7 +134,7 @@ export const Features = () => {
           <h2>Virtual Wallet</h2>
           <div
             style={{
-              fontSize: "4rem",
+              fontSize: "clamp(2.5rem, 8vw, 4rem)",
               fontFamily: "Archivo, sans-serif",
               fontWeight: 800,
               lineHeight: 1,
@@ -165,7 +150,7 @@ export const Features = () => {
         <div
           className="block"
           style={{
-            borderRight: "none",
+            borderBottom: "1px solid var(--ink)",
             padding: "calc(var(--unit) * 4)",
             position: "relative",
             background: "var(--hatch)",
@@ -175,7 +160,7 @@ export const Features = () => {
           <div
             style={{
               background: "var(--paper)",
-              padding: "32px",
+              padding: "clamp(16px, 4vw, 32px)",
               border: "1px solid var(--ink)",
               boxShadow: "8px 8px 0 var(--ink)",
             }}

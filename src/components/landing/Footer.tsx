@@ -7,7 +7,7 @@ export const Footer = () => {
       style={{
         background: "var(--ink)",
         color: "var(--paper)",
-        padding: "80px calc(var(--unit) * 4)",
+        padding: "clamp(40px, 6vw, 80px) clamp(16px, 5vw, 48px)",
         borderLeft: "var(--border-width) solid var(--paper)",
         borderRight: "var(--border-width) solid var(--paper)",
         margin: "0 auto",
@@ -17,8 +17,6 @@ export const Footer = () => {
       <div
         className="footer-grid"
         style={{
-          display: "grid",
-          gridTemplateColumns: "2fr 1fr 1fr",
           gap: "48px",
         }}
       >

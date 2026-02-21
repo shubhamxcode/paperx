@@ -346,7 +346,7 @@ export const SimulationDemo = () => {
         <div
           style={{
             borderBottom: "var(--border-width) solid var(--ink)",
-            padding: "64px 48px",
+            padding: "clamp(32px, 6vw, 64px) clamp(16px, 5vw, 48px)",
             textAlign: "center",
             background: "var(--paper)",
           }}
@@ -526,13 +526,12 @@ export const SimulationDemo = () => {
         className="sim-container"
         style={{
           borderBottom: "var(--border-width) solid var(--ink)",
-          display: "grid",
-          gridTemplateColumns: "3fr 2fr",
           minHeight: "480px",
         }}
       >
         {/* ── CHART SIDE ── */}
         <div
+          className="sim-chart-side"
           style={{
             padding: "28px 24px 24px",
             position: "relative",

@@ -6,7 +6,7 @@ export const Hero = () => {
       <header
         className="hero"
         style={{
-          padding: "120px 0",
+          padding: "clamp(60px, 10vw, 120px) 0",
           position: "relative",
           overflow: "hidden",
         }}
@@ -31,7 +31,7 @@ export const Hero = () => {
           style={{
             position: "relative",
             zIndex: 2,
-            maxWidth: "80%",
+            maxWidth: "min(80%, 700px)",
           }}
         >
           <p
@@ -40,6 +40,7 @@ export const Hero = () => {
               letterSpacing: "2px",
               marginBottom: "16px",
               fontWeight: 700,
+              fontSize: "clamp(10px, 2vw, 13px)",
             }}
           >
             Zero Risk Environment
@@ -51,8 +52,9 @@ export const Hero = () => {
           </h1>
           <p
             style={{
-              marginBottom: "48px",
+              marginBottom: "clamp(24px, 5vw, 48px)",
               color: "var(--ink)",
+              maxWidth: "50ch",
             }}
           >
             Master the markets with ₹10L virtual currency. Real-time data,
@@ -65,13 +67,13 @@ export const Hero = () => {
                 display: "inline-flex",
                 alignItems: "center",
                 justifyContent: "center",
-                height: "64px",
-                padding: "0 48px",
+                height: "clamp(48px, 8vw, 64px)",
+                padding: "0 clamp(24px, 5vw, 48px)",
                 background: "var(--ink)",
                 color: "var(--paper)",
                 fontFamily: "Space Mono, monospace",
                 fontWeight: 700,
-                fontSize: "14px",
+                fontSize: "clamp(12px, 2vw, 14px)",
                 textTransform: "uppercase",
                 letterSpacing: "1px",
                 border: "none",
@@ -80,6 +82,7 @@ export const Hero = () => {
                 overflow: "hidden",
                 transition: "all 0.3s ease",
                 zIndex: 1,
+                whiteSpace: "nowrap",
               }}
             >
               Start Simulation Free
