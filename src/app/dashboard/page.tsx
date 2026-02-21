@@ -2,14 +2,14 @@
 
 import { useSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { TrendingUp } from "lucide-react";
 import Link from "next/link";
 import { UpstoxConnect } from "@/components/UpstoxConnect";
 import { MarketWatch } from "@/components/MarketWatch";
 import toast, { Toaster } from "react-hot-toast";
 
-export default function Dashboard() {
+function DashboardContent() {
     const { data: session, status } = useSession();
     const router = useRouter();
     const searchParams = useSearchParams();
@@ -194,5 +194,20 @@ export default function Dashboard() {
                 )}
             </main>
         </div>
+    );
+}
+
+export default function Dashboard() {
+    return (
+        <Suspense fallback={
+            <div className="min-h-screen bg-black flex items-center justify-center">
+                <div className="text-center">
+                    <div className="w-12 h-12 border-2 border-[#00d8ff] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                    <p className="text-gray-400">Loading...</p>
+                </div>
+            </div>
+        }>
+            <DashboardContent />
+        </Suspense>
     );
 }
