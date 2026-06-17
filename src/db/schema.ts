@@ -1,10 +1,12 @@
 import {
+  boolean,
   integer,
   pgTable,
   primaryKey,
+  real,
+
   text,
   timestamp,
-  boolean,
 } from "drizzle-orm/pg-core";
 import type { AdapterAccountType } from "@auth/core/adapters";
 
@@ -54,41 +56,6 @@ export const sessions = pgTable("session", {
   expires: timestamp("expires", { mode: "date" }).notNull(),
 });
 
-export const verificationTokens = pgTable(
-  "verificationToken",
-  {
-    identifier: text("identifier").notNull(),
-    token: text("token").notNull(),
-    expires: timestamp("expires", { mode: "date" }).notNull(),
-  },
-  (verificationToken) => [
-    primaryKey({
-      columns: [verificationToken.identifier, verificationToken.token],
-    }),
-  ]
-);
-
-// Optional: Authenticators table for WebAuthn (passkeys)
-export const authenticators = pgTable(
-  "authenticator",
-  {
-    credentialID: text("credentialID").notNull().unique(),
-    userId: text("userId")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    providerAccountId: text("providerAccountId").notNull(),
-    credentialPublicKey: text("credentialPublicKey").notNull(),
-    counter: integer("counter").notNull(),
-    credentialDeviceType: text("credentialDeviceType").notNull(),
-    credentialBackedUp: boolean("credentialBackedUp").notNull(),
-    transports: text("transports"),
-  },
-  (authenticator) => [
-    primaryKey({
-      columns: [authenticator.userId, authenticator.credentialID],
-    }),
-  ]
-);
 export const upstoxTokens=pgTable("upstox_token",{
   id:text("id").primaryKey().$defaultFn(()=>crypto.randomUUID()),
   userId:text("userId").notNull().references(()=>users.id,{onDelete:"cascade"}).unique(),
@@ -98,6 +65,34 @@ export const upstoxTokens=pgTable("upstox_token",{
   createdAt:timestamp("createdAt",{mode:"date"}).notNull().defaultNow(),
   updatedAt:timestamp("updatedAt",{mode:"date"}).notNull().defaultNow(),
 })
+
+// =============================================
+// Upstox Instruments (mirrored from the daily master file)
+// =============================================
+
+export const instruments = pgTable("instrument", {
+  // instrument_key is globally unique in the Upstox master file
+  instrumentKey: text("instrumentKey").primaryKey(),
+  tradingSymbol: text("tradingSymbol").notNull(),
+  name: text("name"),
+  exchange: text("exchange").notNull(),
+  segment: text("segment").notNull(),
+  instrumentType: text("instrumentType"),
+  isin: text("isin"),
+  exchangeToken: text("exchangeToken"),
+  lotSize: integer("lotSize"),
+  tickSize: real("tickSize"),
+  // F&O-only fields (null for equities/indices)
+  expiry: timestamp("expiry", { mode: "date" }),
+  strikePrice: real("strikePrice"),
+  underlyingSymbol: text("underlyingSymbol"),
+  assetSymbol: text("assetSymbol"),
+  weekly: boolean("weekly"),
+  updatedAt: timestamp("updatedAt", { mode: "date" }).notNull().defaultNow(),
+});
+
+export type Instrument = typeof instruments.$inferSelect;
+export type NewInstrument = typeof instruments.$inferInsert;
 
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;

@@ -14,7 +14,6 @@ export async function GET(req: NextRequest) {
                 { status: 401 }
             );
         }
-
         
         const userId = session.user.id;
         const upstoxClient = new UpstoxClient(userId);

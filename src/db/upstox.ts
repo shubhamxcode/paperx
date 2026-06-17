@@ -10,7 +10,6 @@ export async function getUpstoxToken(userId: string): Promise<UpstoxToken | null
         .where(eq(upstoxTokens.userId, userId))
         .limit(1);
 
-    console.log(`result:`,result);
     if (result.length === 0) {
         return null;
     }

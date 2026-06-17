@@ -6,7 +6,6 @@ import {
   users,
   accounts,
   sessions,
-  verificationTokens,
 } from "@/db/schema";
 
 export const authOptions: NextAuthOptions = {
@@ -14,7 +13,6 @@ export const authOptions: NextAuthOptions = {
     usersTable: users,
     accountsTable: accounts,
     sessionsTable: sessions,
-    verificationTokensTable: verificationTokens,
   }),
   pages: {
     signIn: "/login",

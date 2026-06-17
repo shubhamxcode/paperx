@@ -69,7 +69,7 @@ export class UpstoxClient {
                     headers: {
                         "Content-Type": "application/x-www-form-urlencoded",
                         Accept: "application/json",
-                    },
+                    }, 
                 }
             );
 
