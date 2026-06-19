@@ -16,7 +16,6 @@ export async function getUpstoxToken(userId: string): Promise<UpstoxToken | null
     const token = result[0];
     return {
         accessToken: token.accessToken,
-        refreshToken: token.refreshToken,
         expiresAt: token.expireAt,
     };
 }
@@ -37,7 +36,6 @@ export async function saveUpstoxToken(
             .update(upstoxTokens)
             .set({
                 accessToken: token.accessToken,
-                refreshToken: token.refreshToken,
                 expireAt: token.expiresAt,
                 updatedAt: new Date(),
             })
@@ -47,7 +45,6 @@ export async function saveUpstoxToken(
         await db.insert(upstoxTokens).values({
             userId,
             accessToken: token.accessToken,
-            refreshToken: token.refreshToken,
             expireAt: token.expiresAt,
         });
     }
@@ -55,6 +52,18 @@ export async function saveUpstoxToken(
 
 export async function deleteUpstoxToken(userId: string): Promise<void> {
     await db.delete(upstoxTokens).where(eq(upstoxTokens.userId, userId));
+}
+
+/**
+ * Force the stored token to "expired" so the DB reflects reality once Upstox
+ * has rejected it (e.g., after the daily 3:30 AM IST reset). Keeps the row so
+ * the UI shows a "reconnect" state rather than a first-time "connect" state.
+ */
+export async function expireUpstoxToken(userId: string): Promise<void> {
+    await db
+        .update(upstoxTokens)
+        .set({ expireAt: new Date(0), updatedAt: new Date() })
+        .where(eq(upstoxTokens.userId, userId));
 }
 
 export function isTokenExpired(expiresAt: Date): boolean {

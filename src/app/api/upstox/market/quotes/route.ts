@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
-import { UpstoxClient } from "@/lib/upstox/client";
+import { UpstoxClient, UpstoxAuthError } from "@/lib/upstox/client";
 
 export async function GET(req: NextRequest) {
     try {
@@ -30,8 +30,16 @@ export async function GET(req: NextRequest) {
         return NextResponse.json(quotes);
     } catch (error: any) {
         console.error("Error fetching market quotes:", error);
+        // Only a genuine Upstox session failure asks the user to reconnect.
+        // Everything else is a normal error (500).
+        if (error instanceof UpstoxAuthError) {
+            return NextResponse.json(
+                { error: error.message, reconnect: true },
+                { status: 401 }
+            );
+        }
         return NextResponse.json(
-            { error: error.message || "Failed to fetch market quotes" },
+            { error: error.message || "Failed to fetch market quotes", reconnect: false },
             { status: 500 }
         );
     }

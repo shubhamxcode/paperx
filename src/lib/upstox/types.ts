@@ -9,7 +9,6 @@ export interface UpstoxTokenResponse {
 
 export interface UpstoxToken {
     accessToken: string;
-    refreshToken: string;
     expiresAt: Date;
 }
 

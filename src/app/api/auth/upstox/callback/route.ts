@@ -42,12 +42,11 @@ export async function GET(req: NextRequest) {
         return NextResponse.redirect(
             new URL("/dashboard?upstox_connected=true", req.url)
         );
-    } catch (error: any) {
+    } catch (error) {
+        // Log full details server-side only; never reflect internals into the URL.
         console.error("Error in Upstox callback:", error);
-        console.error("Error message:", error.message);
-        console.error("Error stack:", error.stack);
         return NextResponse.redirect(
-            new URL(`/dashboard?upstox_error=${encodeURIComponent(error.message || "token_exchange_failed")}`, req.url)
+            new URL("/dashboard?upstox_error=connection_failed", req.url)
         );
     }
 }

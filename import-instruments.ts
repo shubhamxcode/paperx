@@ -9,7 +9,7 @@
 import * as fs from "fs";
 import * as path from "path";
 
-// --- Load .env FIRST (same pattern as check-upstox.ts) ---
+// --- Load .env FIRST (before importing the DB client) ---
 const envPath = path.resolve(process.cwd(), ".env");
 if (fs.existsSync(envPath)) {
     fs.readFileSync(envPath, "utf8")
@@ -31,7 +31,7 @@ if (fs.existsSync(envPath)) {
 // + indices. Add "NSE_FO", "MCX_FO" etc. here if you ever need derivatives.
 const SEGMENTS = new Set(["NSE_EQ", "BSE_EQ", "NSE_INDEX", "BSE_INDEX"]);
 
-const FILE = path.resolve(process.cwd(), "public/complete.json");
+const FILE = path.resolve(process.cwd(), "data/complete.json");
 const CHUNK_SIZE = 1000;
 
 type RawInstrument = {

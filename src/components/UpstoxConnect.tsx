@@ -5,11 +5,12 @@ import { useRouter } from "next/navigation";
 
 interface UpstoxStatus {
     connected: boolean;
+    expired: boolean;
     expiresAt: string | null;
 }
 
 export function UpstoxConnect() {
-    const [status, setStatus] = useState<UpstoxStatus>({ connected: false, expiresAt: null });
+    const [status, setStatus] = useState<UpstoxStatus>({ connected: false, expired: false, expiresAt: null });
     const [loading, setLoading] = useState(true);
     const router = useRouter();
 
@@ -44,7 +45,7 @@ export function UpstoxConnect() {
             });
 
             if (response.ok) {
-                setStatus({ connected: false, expiresAt: null });
+                setStatus({ connected: false, expired: false, expiresAt: null });
                 router.refresh();
             }
         } catch (error) {
@@ -73,6 +74,23 @@ export function UpstoxConnect() {
                     className="px-4 py-2 text-sm text-red-400 hover:text-red-300 border border-red-500/30 hover:border-red-500/50 rounded-lg transition-colors"
                 >
                     Disconnect
+                </button>
+            </div>
+        );
+    }
+
+    if (status.expired) {
+        return (
+            <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 px-4 py-2 bg-amber-500/10 border border-amber-500/30 rounded-lg">
+                    <div className="w-2 h-2 bg-amber-500 rounded-full"></div>
+                    <span className="text-sm text-amber-400 font-medium">Session expired</span>
+                </div>
+                <button
+                    onClick={handleConnect}
+                    className="px-4 py-2 text-sm bg-amber-500 text-black font-semibold rounded-lg hover:bg-amber-400 transition-all active:scale-[0.98]"
+                >
+                    Reconnect
                 </button>
             </div>
         );

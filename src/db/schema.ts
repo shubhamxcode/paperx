@@ -60,7 +60,6 @@ export const upstoxTokens=pgTable("upstox_token",{
   id:text("id").primaryKey().$defaultFn(()=>crypto.randomUUID()),
   userId:text("userId").notNull().references(()=>users.id,{onDelete:"cascade"}).unique(),
   accessToken: text("accessToken").notNull(),
-  refreshToken:text("refreshToken").notNull(),
   expireAt:timestamp("expireAt",{mode:"date"}).notNull(),
   createdAt:timestamp("createdAt",{mode:"date"}).notNull().defaultNow(),
   updatedAt:timestamp("updatedAt",{mode:"date"}).notNull().defaultNow(),

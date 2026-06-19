@@ -11,6 +11,34 @@ import {
     saveUpstoxToken,
 } from "@/db/upstox";
 
+/**
+ * Thrown only when the Upstox token is missing, expired, or rejected by Upstox
+ * (HTTP 401). Routes use `instanceof UpstoxAuthError` to decide whether to ask
+ * the user to reconnect — any other failure (network, 5xx, bad request) is a
+ * normal error and must NOT trigger the reconnect flow.
+ */
+export class UpstoxAuthError extends Error {
+    constructor(message = "Upstox session expired. Please reconnect your account.") {
+        super(message);
+        this.name = "UpstoxAuthError";
+    }
+}
+
+/**
+ * Upstox access tokens always expire daily at 03:30 AM IST (= 22:00 UTC the
+ * previous day), regardless of when they were generated. There is no refresh
+ * token, so this is the true expiry to store.
+ */
+export function getUpstoxTokenExpiry(from: Date = new Date()): Date {
+    const expiry = new Date(from);
+    // 22:00 UTC == 03:30 IST
+    expiry.setUTCHours(22, 0, 0, 0);
+    if (expiry <= from) {
+        expiry.setUTCDate(expiry.getUTCDate() + 1);
+    }
+    return expiry;
+}
+
 export class UpstoxClient {
     private apiKey: string;
     private apiSecret: string;
@@ -73,16 +101,11 @@ export class UpstoxClient {
                 }
             );
 
-            console.log("Upstox token response:", JSON.stringify(response.data, null, 2));
-
-            // Calculate expiry time (default to 24 hours if not provided)
-            const expiresInSeconds = response.data.expires_in || 86400; // 24 hours default
-            const expiresAt = new Date();
-            expiresAt.setSeconds(expiresAt.getSeconds() + expiresInSeconds);
+            // Upstox tokens expire at 03:30 AM IST regardless of expires_in.
+            const expiresAt = getUpstoxTokenExpiry();
 
             const token: UpstoxToken = {
                 accessToken: response.data.access_token,
-                refreshToken: response.data.refresh_token || "",
                 expiresAt,
             };
 
@@ -101,93 +124,27 @@ export class UpstoxClient {
     }
 
     /**
-     * Refresh access token using refresh token
-     */
-    private async refreshAccessToken(refreshToken: string): Promise<UpstoxToken> {
-        try {
-            const response = await axios.post<UpstoxTokenResponse>(
-                `${this.baseUrl}/v2/login/authorization/token`,
-                {
-                    refresh_token: refreshToken,
-                    client_id: this.apiKey,
-                    client_secret: this.apiSecret,
-                    grant_type: "refresh_token",
-                },
-                {
-                    headers: {
-                        "Content-Type": "application/x-www-form-urlencoded",
-                        Accept: "application/json",
-                    },
-                }
-            );
-
-            console.log("Token refreshed successfully");
-
-            // Calculate expiry time (default to 24 hours if not provided)
-            const expiresInSeconds = response.data.expires_in || 86400;
-            const expiresAt = new Date();
-            expiresAt.setSeconds(expiresAt.getSeconds() + expiresInSeconds);
-
-            const newToken: UpstoxToken = {
-                accessToken: response.data.access_token,
-                refreshToken: response.data.refresh_token || refreshToken, // Keep old refresh token if new one not provided
-                expiresAt,
-            };
-
-            // Save refreshed token to database
-            await saveUpstoxToken(this.userId, newToken);
-
-            return newToken;
-        } catch (error: any) {
-            console.error("Error refreshing token:", error.response?.data || error.message);
-            throw new Error(
-                error.response?.data?.message ||
-                error.response?.data?.errors?.[0]?.message ||
-                "Failed to refresh access token. Please reconnect your Upstox account."
-            );
-        }
-    }
-
-    /**
-     * Get valid access token (refreshes if expired or about to expire)
+     * Get the stored access token, or throw UpstoxAuthError if it's missing or
+     * expired. Upstox does not issue refresh tokens — tokens reset daily at
+     * 03:30 AM IST — so an expired token can only be fixed by reconnecting.
      */
     private async getValidAccessToken(): Promise<string> {
         const token = await getUpstoxToken(this.userId);
 
         if (!token) {
-            throw new Error("No Upstox token found. Please connect your account.");
+            throw new UpstoxAuthError("No Upstox token found. Please connect your account.");
         }
 
-        // Check if token is expired or will expire in the next 5 minutes
-        const now = new Date();
-        const expiryTime = new Date(token.expiresAt);
-        const fiveMinutesFromNow = new Date(now.getTime() + 5 * 60 * 1000);
-
-        const needsRefresh = expiryTime <= fiveMinutesFromNow;
-
-        if (needsRefresh) {
-            console.log("Access token expired or expiring soon, attempting to refresh...");
-
-            // Check if refresh token exists
-            if (!token.refreshToken) {
-                throw new Error("No refresh token available. Please reconnect your Upstox account.");
-            }
-
-            try {
-                // Attempt to refresh the token
-                const newToken = await this.refreshAccessToken(token.refreshToken);
-                return newToken.accessToken;
-            } catch (error) {
-                // If refresh fails, user needs to reconnect
-                throw error;
-            }
+        if (new Date(token.expiresAt).getTime() <= Date.now()) {
+            throw new UpstoxAuthError("Upstox session expired. Please reconnect your account.");
         }
 
         return token.accessToken;
     }
 
     /**
-     * Make authenticated API request
+     * Make authenticated API request. A 401 from Upstox is normalised to an
+     * UpstoxAuthError; all other failures bubble up unchanged.
      */
     private async makeAuthenticatedRequest<T>(
         method: "GET" | "POST" | "PUT" | "DELETE",
@@ -195,27 +152,30 @@ export class UpstoxClient {
         data?: any
     ): Promise<T> {
         const accessToken = await this.getValidAccessToken();
-        const response = await this.axiosInstance.request<T>({
-            method,
-            url: endpoint,
-            data,
-            headers: {
-                Authorization: `Bearer ${accessToken}`,
-            },
-        });
-
-        return response.data;
+        try {
+            const response = await this.axiosInstance.request<T>({
+                method,
+                url: endpoint,
+                data,
+                headers: {
+                    Authorization: `Bearer ${accessToken}`,
+                },
+            });
+            return response.data;
+        } catch (error: any) {
+            if (error?.response?.status === 401) {
+                throw new UpstoxAuthError();
+            }
+            throw error;
+        }
     }
 
     /**
      * Get market quotes for instruments
      */
-
-
     async getMarketQuotes(instrumentKeys: string[]): Promise<{ data: { [key: string]: MarketQuote } }> {
         const params = new URLSearchParams();
         instrumentKeys.forEach((key) => params.append("instrument_key", key));
-             console.log(instrumentKeys)
         return this.makeAuthenticatedRequest<{ data: { [key: string]: MarketQuote } }>(
             "GET",
             `/v2/market-quote/quotes?${params.toString()}`
@@ -249,15 +209,34 @@ export class UpstoxClient {
     }
 
     /**
+     * Cheaply verify the stored token actually works against Upstox.
+     * Returns false only when Upstox rejects the token (401); rethrows other
+     * (e.g. network) errors so callers don't falsely log the user out.
+     */
+    async validateToken(): Promise<boolean> {
+        try {
+            await this.getLTP(["NSE_INDEX|Nifty 50"]);
+            return true;
+        } catch (error) {
+            // Only a genuine auth failure means "not valid". Network/5xx errors
+            // rethrow so the caller doesn't wrongly mark the session expired.
+            if (error instanceof UpstoxAuthError) return false;
+            throw error;
+        }
+    }
+
+    /**
      * Get WebSocket authorization for real-time data
      */
     async getWebSocketAuth(): Promise<{ data: { authorizedRedirectUri: string } }> {
-        const accessToken = await this.getValidAccessToken();
+        // Ask Upstox server-side for a signed feed URL containing a single-use
+        // code. The raw access token is never exposed to the browser.
+        const response = await this.makeAuthenticatedRequest<{
+            data: { authorized_redirect_uri: string };
+        }>("GET", "/v3/feed/market-data-feed/authorize");
 
         return {
-            data: {
-                authorizedRedirectUri: `wss://api.upstox.com/v2/feed/market-data-feed/authorize?token=${accessToken}`,
-            },
+            data: { authorizedRedirectUri: response.data.authorized_redirect_uri },
         };
     }
 }

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { TrendingUp, TrendingDown, Activity, Search, X } from "lucide-react";
+import { useWatchlist, type WatchInstrument } from "@/lib/useWatchlist";
 
 interface MarketData {
     instrument_key: string;
@@ -13,11 +14,7 @@ interface MarketData {
     last_traded_time?: string;
 }
 
-interface Instrument {
-    key: string;
-    symbol: string;
-    exchange: string;
-}
+type Instrument = WatchInstrument;
 
 interface SearchResult {
     instrumentKey: string;
@@ -27,19 +24,9 @@ interface SearchResult {
     segment: string;
 }
 
-// Starting watchlist (used until the user customises it). Stored per-browser.
-const DEFAULT_INSTRUMENTS: Instrument[] = [
-    { key: "NSE_EQ|INE002A01018", symbol: "RELIANCE", exchange: "NSE" },
-    { key: "NSE_EQ|INE467B01029", symbol: "TCS", exchange: "NSE" },
-    { key: "NSE_EQ|INE040A01034", symbol: "HDFCBANK", exchange: "NSE" },
-    { key: "NSE_EQ|INE009A01021", symbol: "INFY", exchange: "NSE" },
-    { key: "NSE_EQ|INE030A01027", symbol: "ICICIBANK", exchange: "NSE" },
-];
-
-const STORAGE_KEY = "paperx_watchlist";
-
 export function MarketWatch() {
-    const [instruments, setInstruments] = useState<Instrument[]>(DEFAULT_INSTRUMENTS);
+    // Watchlist is fully user-driven (no hardcoded stocks) and shared via hook.
+    const { list: instruments, add, remove } = useWatchlist();
     const [marketData, setMarketData] = useState<Map<string, MarketData>>(new Map());
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -55,28 +42,6 @@ export function MarketWatch() {
     const instrumentsRef = useRef<Instrument[]>(instruments);
     const subscribedRef = useRef<Set<string>>(new Set());
     instrumentsRef.current = instruments;
-
-    // Load saved watchlist once on mount
-    useEffect(() => {
-        try {
-            const saved = localStorage.getItem(STORAGE_KEY);
-            if (saved) {
-                const parsed = JSON.parse(saved);
-                if (Array.isArray(parsed) && parsed.length > 0) setInstruments(parsed);
-            }
-        } catch {
-            // ignore corrupt storage
-        }
-    }, []);
-
-    // Persist watchlist whenever it changes
-    useEffect(() => {
-        try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(instruments));
-        } catch {
-            // ignore
-        }
-    }, [instruments]);
 
     // Re-fetch REST quotes whenever the watchlist changes
     useEffect(() => {
@@ -133,7 +98,11 @@ export function MarketWatch() {
             const response = await fetch(`/api/upstox/market/quotes?${params.toString()}`);
 
             if (!response.ok) {
-                const errorData = await response.json();
+                const errorData = await response.json().catch(() => ({}));
+                // Only a genuine Upstox session failure flips the UI to reconnect.
+                if (errorData?.reconnect) {
+                    window.dispatchEvent(new Event("paperx_upstox_unauthorized"));
+                }
                 throw new Error(errorData.error || "Failed to fetch quotes");
             }
 
@@ -265,18 +234,14 @@ export function MarketWatch() {
     };
 
     const addInstrument = (r: SearchResult) => {
-        setInstruments((prev) =>
-            prev.some((i) => i.key === r.instrumentKey)
-                ? prev
-                : [...prev, { key: r.instrumentKey, symbol: r.tradingSymbol, exchange: r.exchange }]
-        );
+        add({ key: r.instrumentKey, symbol: r.tradingSymbol, exchange: r.exchange });
         setQuery("");
         setResults([]);
         setShowResults(false);
     };
 
     const removeInstrument = (key: string) => {
-        setInstruments((prev) => prev.filter((i) => i.key !== key));
+        remove(key);
         setMarketData((prev) => {
             const next = new Map(prev);
             next.delete(key);
@@ -287,7 +252,10 @@ export function MarketWatch() {
     return (
         <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
             <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-bold text-white">Market Watch</h2>
+                <div>
+                    <h2 className="text-xl font-bold text-white">Watchlist</h2>
+                    <p className="text-xs text-gray-500">{instruments.length} {instruments.length === 1 ? "stock" : "stocks"}</p>
+                </div>
                 <div className="flex items-center gap-2">
                     <div
                         className={`flex items-center gap-2 px-3 py-1.5 rounded-lg ${wsConnected
@@ -377,6 +345,14 @@ export function MarketWatch() {
                 </div>
             )}
 
+            {!error && instruments.length > 0 && (
+                <div className="mb-1 flex items-center px-4 text-[11px] uppercase tracking-wider text-gray-500">
+                    <span className="flex-1">Company</span>
+                    <span className="flex-1 text-right">Market price</span>
+                    <span className="flex-1 text-right pr-7">Volume</span>
+                </div>
+            )}
+
             {!error && (
                 <div className="space-y-2">
                     {instruments.map((inst) => {
@@ -446,9 +422,15 @@ export function MarketWatch() {
                         );
                     })}
 
-                    {instruments.length === 0 && (
-                        <div className="text-center py-12 text-gray-400">
-                            Your watchlist is empty. Search above to add stocks.
+                    {instruments.length === 0 && !loading && (
+                        <div className="flex flex-col items-center justify-center py-16 text-center">
+                            <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-[#00d8ff]/10">
+                                <Search className="h-6 w-6 text-[#00d8ff]" />
+                            </div>
+                            <p className="font-medium text-white">Your watchlist is empty</p>
+                            <p className="mt-1 text-sm text-gray-500">
+                                Search any of 20,000+ stocks &amp; indices above to start tracking them.
+                            </p>
                         </div>
                     )}
                 </div>
