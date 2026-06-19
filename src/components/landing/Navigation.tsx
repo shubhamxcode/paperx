@@ -3,9 +3,16 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useState } from "react";
+import { useSession } from "next-auth/react";
 
 export const Navigation = () => {
   const [menuOpen, setMenuOpen] = useState(false);
+  const { status } = useSession();
+  // Signed-in visitors get a Dashboard link; everyone else gets Login.
+  const accountLink =
+    status === "authenticated"
+      ? { href: "/dashboard", label: "Dashboard" }
+      : { href: "/login", label: "Login" };
 
   return (
     <div className="container">
@@ -52,7 +59,7 @@ export const Navigation = () => {
             { href: "#simulation", label: "Simulation" },
             { href: "#markets", label: "Markets" },
             { href: "#analytics", label: "Analytics" },
-            { href: "/login", label: "Login" },
+            accountLink,
           ].map(({ href, label }) => (
             <Link
               key={label}
@@ -99,7 +106,7 @@ export const Navigation = () => {
         <Link href="#simulation" onClick={() => setMenuOpen(false)}>Simulation</Link>
         <Link href="#markets" onClick={() => setMenuOpen(false)}>Markets</Link>
         <Link href="#analytics" onClick={() => setMenuOpen(false)}>Analytics</Link>
-        <Link href="/login" onClick={() => setMenuOpen(false)}>Login</Link>
+        <Link href={accountLink.href} onClick={() => setMenuOpen(false)}>{accountLink.label}</Link>
       </div>
     </div>
   );

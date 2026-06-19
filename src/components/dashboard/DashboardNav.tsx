@@ -1,7 +1,8 @@
 "use client";
 
 import { ReactNode } from "react";
-import { TrendingUp, Search, Bell, RefreshCw, CandlestickChart } from "lucide-react";
+import { TrendingUp, Search, Bell, RefreshCw } from "lucide-react";
+import { ProfileMenu } from "./ProfileMenu";
 
 export type DashboardTab = "Explore" | "Holdings" | "Positions" | "Orders" | "Watchlist";
 
@@ -10,30 +11,23 @@ const PRODUCT_LINKS = ["Stocks"];
 
 interface DashboardNavProps {
     userName?: string | null;
+    userEmail?: string | null;
     userImage?: string | null;
     activeTab: DashboardTab;
     onTabChange: (tab: DashboardTab) => void;
-    onProfileClick: () => void;
     onSearchClick: () => void;
     upstoxSlot?: ReactNode;
 }
 
 export function DashboardNav({
     userName,
+    userEmail,
     userImage,
     activeTab,
     onTabChange,
-    onProfileClick,
     onSearchClick,
     upstoxSlot,
 }: DashboardNavProps) {
-    const initials = (userName || "U")
-        .split(" ")
-        .map((p) => p[0])
-        .slice(0, 2)
-        .join("")
-        .toUpperCase();
-
     return (
         <header className="sticky top-0 z-50 border-b border-white/10 bg-black/80 backdrop-blur-xl">
             <div className="mx-auto max-w-7xl px-6">
@@ -78,20 +72,7 @@ export function DashboardNav({
                         <button className="hidden rounded-lg p-2 text-gray-400 transition-colors hover:bg-white/5 hover:text-white sm:block">
                             <Bell className="h-5 w-5" />
                         </button>
-                        <button
-                            onClick={onProfileClick}
-                            title={userName || "Profile"}
-                            className="h-9 w-9 overflow-hidden rounded-full border border-white/15 bg-white/5 transition-transform hover:scale-105"
-                        >
-                            {userImage ? (
-                                // eslint-disable-next-line @next/next/no-img-element
-                                <img src={userImage} alt={userName || "Profile"} className="h-full w-full object-cover" />
-                            ) : (
-                                <span className="flex h-full w-full items-center justify-center text-xs font-semibold text-white">
-                                    {initials}
-                                </span>
-                            )}
-                        </button>
+                        <ProfileMenu name={userName} email={userEmail} image={userImage} />
                     </div>
                 </div>
 
@@ -119,10 +100,6 @@ export function DashboardNav({
 
                     <div className="flex items-center gap-2 py-2">
                         {upstoxSlot}
-                        <button className="hidden items-center gap-2 rounded-lg border border-white/10 px-3 py-1.5 text-xs text-gray-300 transition-colors hover:border-white/20 md:flex">
-                            <CandlestickChart className="h-4 w-4" />
-                            Terminal
-                        </button>
                     </div>
                 </div>
             </div>

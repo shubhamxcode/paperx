@@ -18,15 +18,21 @@ export async function GET(req: NextRequest) {
         const userId = session.user.id;
         const upstoxClient = new UpstoxClient(userId);
 
-        // Generate state for CSRF protection
+        // Generate a random state for CSRF protection and stash it in an
+        // httpOnly cookie so the callback can verify the response came from a
+        // flow this user actually started.
         const state = crypto.randomUUID();
-
-        // Get authorization URL
         const authUrl = upstoxClient.getAuthorizationUrl(state);
 
-        // Store state in session or cookie for verification in callback
-        // For now, we'll redirect directly
-        return NextResponse.redirect(authUrl);
+        const response = NextResponse.redirect(authUrl);
+        response.cookies.set("upstox_oauth_state", state, {
+            httpOnly: true,
+            secure: true,
+            sameSite: "lax", // must survive the cross-site redirect back from Upstox
+            path: "/",
+            maxAge: 60 * 10, // 10 minutes
+        });
+        return response;
     } catch (error) {
         console.error("Error in Upstox authorization:", error);
         return NextResponse.json(
