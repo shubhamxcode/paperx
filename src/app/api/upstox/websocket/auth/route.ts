@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { UpstoxClient } from "@/lib/upstox/client";
 
-export async function GET(req: NextRequest) {
+export async function GET() {
     try {
         const session = await getServerSession(authOptions);
 
@@ -18,10 +18,13 @@ export async function GET(req: NextRequest) {
         const wsAuth = await upstoxClient.getWebSocketAuth();
 
         return NextResponse.json(wsAuth);
-    } catch (error: any) {
-        console.error("Error getting WebSocket auth:", error);
+    } catch (error: unknown) {
+        console.error(
+            "Error getting WebSocket auth:",
+            error instanceof Error ? error.message : "Unknown error"
+        );
         return NextResponse.json(
-            { error: error.message || "Failed to get WebSocket authorization" },
+            { error: "Failed to get WebSocket authorization" },
             { status: 500 }
         );
     }

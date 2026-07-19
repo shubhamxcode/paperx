@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { UpstoxClient } from "@/lib/upstox/client";
 
-export async function GET(req: NextRequest) {
+export async function GET() {
     try {
         // Check if user is authenticated
         const session = await getServerSession(authOptions);

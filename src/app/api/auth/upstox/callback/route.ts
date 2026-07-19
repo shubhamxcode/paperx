@@ -51,7 +51,10 @@ export async function GET(req: NextRequest) {
         return redirect(req, "/dashboard?upstox_connected=true");
     } catch (error) {
         // Log full details server-side only; never reflect internals into the URL.
-        console.error("Error in Upstox callback:", error);
+        console.error(
+            "Error in Upstox callback:",
+            error instanceof Error ? error.message : "Unknown error"
+        );
         return redirect(req, "/dashboard?upstox_error=connection_failed");
     }
 }

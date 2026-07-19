@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { deleteUpstoxToken } from "@/db/upstox";
 
-export async function POST(req: NextRequest) {
+export async function POST() {
     try {
         const session = await getServerSession(authOptions);
 
