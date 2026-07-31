@@ -90,7 +90,7 @@ export default function Login() {
         </div>
 
         <div className="mt-8 text-center text-sm text-gray-500">
-          <p>Don't have an account? It's free to start.</p>
+          <p>Don&apos;t have an account? It&apos;s free to start.</p>
         </div>
       </div>
     </div>

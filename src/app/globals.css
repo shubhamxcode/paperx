@@ -224,3 +224,68 @@ path.line-path {
   h3 { font-size: 1.25rem; }
   p { font-size: 0.9rem; }
 }
+
+/* PaperX authenticated product surface */
+.paperx-dashboard {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  letter-spacing: normal;
+}
+
+.paperx-dashboard h1,
+.paperx-dashboard h2,
+.paperx-dashboard h3,
+.paperx-dashboard h4 {
+  font-family: inherit;
+  text-transform: none;
+  line-height: 1.25;
+}
+
+.paperx-dashboard p {
+  max-width: none;
+}
+
+.paperx-dashboard :where(button, a, input):focus-visible {
+  outline: 2px solid #22d3ee;
+  outline-offset: 2px;
+}
+
+.paperx-button-secondary {
+  display: inline-flex;
+  min-height: 2.5rem;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid rgb(255 255 255 / 0.12);
+  border-radius: 0.75rem;
+  padding: 0.625rem 1rem;
+  color: #e2e8f0;
+  font-size: 0.875rem;
+  transition: border-color 180ms ease, background-color 180ms ease;
+}
+
+.paperx-button-secondary:hover {
+  border-color: rgb(255 255 255 / 0.22);
+  background: rgb(255 255 255 / 0.04);
+}
+
+.paperx-icon-button {
+  display: inline-grid;
+  width: 2.5rem;
+  height: 2.5rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid rgb(255 255 255 / 0.1);
+  border-radius: 0.75rem;
+  color: #94a3b8;
+  transition: border-color 180ms ease, color 180ms ease, background-color 180ms ease;
+}
+
+.paperx-icon-button:hover:not(:disabled) {
+  border-color: rgb(34 211 238 / 0.35);
+  background: rgb(34 211 238 / 0.06);
+  color: #67e8f9;
+}
+
+.paperx-icon-button:disabled {
+  cursor: default;
+  opacity: 0.75;
+}

@@ -300,6 +300,7 @@ export const SimulationDemo = () => {
   const [totalAnswered, setTotalAnswered] = useState(0);
   const [gameOver, setGameOver] = useState(false);
   const [virtBalance, setVirtBalance] = useState(10000);
+  const [lastBalanceDelta, setLastBalanceDelta] = useState(0);
 
   const pattern = PATTERNS[patternIdx];
   const answered = userAnswer !== null;
@@ -310,10 +311,14 @@ export const SimulationDemo = () => {
     setUserAnswer(answer);
     const correct = answer === pattern.signal;
     if (correct) {
+      const profit = Math.floor(Math.random() * 300 + 200);
       setScore((s) => s + 1);
-      setVirtBalance((b) => b + Math.floor(Math.random() * 300 + 200));
+      setVirtBalance((b) => b + profit);
+      setLastBalanceDelta(profit);
     } else {
-      setVirtBalance((b) => b - Math.floor(Math.random() * 200 + 100));
+      const loss = Math.floor(Math.random() * 200 + 100);
+      setVirtBalance((b) => b - loss);
+      setLastBalanceDelta(-loss);
     }
     setTotalAnswered((t) => t + 1);
   };
@@ -324,6 +329,7 @@ export const SimulationDemo = () => {
     } else {
       setPatternIdx((i) => i + 1);
       setUserAnswer(null);
+      setLastBalanceDelta(0);
     }
   };
 
@@ -728,9 +734,9 @@ export const SimulationDemo = () => {
                   color: isCorrect ? "#15803d" : "#dc2626",
                 }}
               >
-                {isCorrect
-                  ? `+₹${Math.floor(Math.random() * 300 + 200)} virtual profit`
-                  : `-₹${Math.floor(Math.random() * 200 + 100)} virtual loss`}
+                {lastBalanceDelta >= 0
+                  ? `+₹${lastBalanceDelta} virtual profit`
+                  : `-₹${Math.abs(lastBalanceDelta)} virtual loss`}
               </div>
             </div>
           )}

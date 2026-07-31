@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { TrendingUp, TrendingDown, Activity, Search, X } from "lucide-react";
+import { TrendingUp, TrendingDown, Activity, Search, X, ArrowUp, ArrowDown } from "lucide-react";
 import { useWatchlist, type WatchInstrument } from "@/lib/useWatchlist";
 
 interface MarketData {
@@ -24,9 +24,30 @@ interface SearchResult {
     segment: string;
 }
 
+interface QuotePayload {
+    instrument_token?: string;
+    instrument_key?: string;
+    last_price?: number;
+    net_change?: number;
+    volume?: number;
+    last_traded_time?: string;
+}
+
+interface LegacyFeedPayload {
+    ff?: { marketFF?: { ltpc?: { ltp?: number; ltq?: number; ltt?: string } } };
+}
+
 export function MarketWatch() {
     // Watchlist is fully user-driven (no hardcoded stocks) and shared via hook.
-    const { list: instruments, add, remove } = useWatchlist();
+    const {
+        list: instruments,
+        loading: watchlistLoading,
+        error: watchlistError,
+        add,
+        remove,
+        reorder,
+        refresh: refreshWatchlist,
+    } = useWatchlist();
     const [marketData, setMarketData] = useState<Map<string, MarketData>>(new Map());
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -98,7 +119,10 @@ export function MarketWatch() {
             const response = await fetch(`/api/upstox/market/quotes?${params.toString()}`);
 
             if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
+                const errorData = await response.json().catch(() => ({})) as {
+                    reconnect?: boolean;
+                    error?: string;
+                };
                 // Only a genuine Upstox session failure flips the UI to reconnect.
                 if (errorData?.reconnect) {
                     window.dispatchEvent(new Event("paperx_upstox_unauthorized"));
@@ -110,7 +134,7 @@ export function MarketWatch() {
             const dataMap = new Map<string, MarketData>();
 
             if (result.data) {
-                const quotes = Object.values(result.data) as any[];
+                const quotes = Object.values(result.data) as QuotePayload[];
                 quotes.forEach((quote) => {
                     const instrument = list.find(
                         (i) => i.key === quote.instrument_token || i.key === quote.instrument_key
@@ -130,9 +154,9 @@ export function MarketWatch() {
             }
 
             setMarketData(dataMap);
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error("Error fetching quotes:", err);
-            setError(err.message || "Failed to fetch market data");
+            setError(err instanceof Error ? err.message : "Failed to fetch market data");
         } finally {
             setLoading(false);
         }
@@ -163,7 +187,7 @@ export function MarketWatch() {
                     if (message.type === "feed" && message.feeds) {
                         setMarketData((prev) => {
                             const newMap = new Map(prev);
-                            Object.entries(message.feeds).forEach(([key, feed]: [string, any]) => {
+                            Object.entries(message.feeds as Record<string, LegacyFeedPayload>).forEach(([key, feed]) => {
                                 const existing = newMap.get(key);
                                 const instrument = instrumentsRef.current.find((i) => i.key === key);
                                 if (instrument && feed.ff?.marketFF?.ltpc) {
@@ -233,20 +257,40 @@ export function MarketWatch() {
         }
     };
 
-    const addInstrument = (r: SearchResult) => {
-        add({ key: r.instrumentKey, symbol: r.tradingSymbol, exchange: r.exchange });
-        setQuery("");
-        setResults([]);
-        setShowResults(false);
+    const addInstrument = async (r: SearchResult) => {
+        try {
+            await add({ key: r.instrumentKey, symbol: r.tradingSymbol, exchange: r.exchange });
+            setQuery("");
+            setResults([]);
+            setShowResults(false);
+        } catch (cause) {
+            setError(cause instanceof Error ? cause.message : "Failed to add instrument");
+        }
     };
 
-    const removeInstrument = (key: string) => {
-        remove(key);
-        setMarketData((prev) => {
-            const next = new Map(prev);
-            next.delete(key);
-            return next;
-        });
+    const removeInstrument = async (key: string) => {
+        try {
+            await remove(key);
+            setMarketData((prev) => {
+                const next = new Map(prev);
+                next.delete(key);
+                return next;
+            });
+        } catch (cause) {
+            setError(cause instanceof Error ? cause.message : "Failed to remove instrument");
+        }
+    };
+
+    const moveInstrument = async (index: number, direction: -1 | 1) => {
+        const destination = index + direction;
+        if (destination < 0 || destination >= instruments.length) return;
+        const next = [...instruments];
+        [next[index], next[destination]] = [next[destination], next[index]];
+        try {
+            await reorder(next);
+        } catch (cause) {
+            setError(cause instanceof Error ? cause.message : "Failed to reorder watchlist");
+        }
     };
 
     return (
@@ -333,11 +377,14 @@ export function MarketWatch() {
             </div>
 
             {/* Status / list */}
-            {error && (
+            {(watchlistError || error) && (
                 <div className="flex flex-col items-center justify-center py-10">
-                    <div className="text-red-400 mb-3">⚠️ {error}</div>
+                    <div className="text-red-400 mb-3">⚠️ {watchlistError || error}</div>
                     <button
-                        onClick={() => fetchQuotes(instruments)}
+                        onClick={() => {
+                            if (watchlistError) void refreshWatchlist();
+                            else void fetchQuotes(instruments);
+                        }}
                         className="px-4 py-2 bg-[#00d8ff] text-black rounded-lg hover:bg-[#00c4e6] transition-colors"
                     >
                         Retry
@@ -345,7 +392,7 @@ export function MarketWatch() {
                 </div>
             )}
 
-            {!error && instruments.length > 0 && (
+            {!watchlistError && !error && instruments.length > 0 && (
                 <div className="mb-1 flex items-center px-4 text-[11px] uppercase tracking-wider text-gray-500">
                     <span className="flex-1">Company</span>
                     <span className="flex-1 text-right">Market price</span>
@@ -353,9 +400,9 @@ export function MarketWatch() {
                 </div>
             )}
 
-            {!error && (
+            {!watchlistError && !error && (
                 <div className="space-y-2">
-                    {instruments.map((inst) => {
+                    {instruments.map((inst, index) => {
                         const data = marketData.get(inst.key);
                         const lastPrice = data?.last_price ?? 0;
                         const netChange = data?.net_change ?? 0;
@@ -410,8 +457,28 @@ export function MarketWatch() {
                                             {data ? `${(data.volume / 1000).toFixed(1)}K` : "—"}
                                         </p>
                                     </div>
+                                    <div className="flex flex-col">
+                                        <button
+                                            onClick={() => void moveInstrument(index, -1)}
+                                            disabled={index === 0}
+                                            title="Move up"
+                                            aria-label={`Move ${inst.symbol} up`}
+                                            className="text-gray-500 hover:text-[#00d8ff] disabled:opacity-20"
+                                        >
+                                            <ArrowUp className="h-3.5 w-3.5" />
+                                        </button>
+                                        <button
+                                            onClick={() => void moveInstrument(index, 1)}
+                                            disabled={index === instruments.length - 1}
+                                            title="Move down"
+                                            aria-label={`Move ${inst.symbol} down`}
+                                            className="text-gray-500 hover:text-[#00d8ff] disabled:opacity-20"
+                                        >
+                                            <ArrowDown className="h-3.5 w-3.5" />
+                                        </button>
+                                    </div>
                                     <button
-                                        onClick={() => removeInstrument(inst.key)}
+                                        onClick={() => void removeInstrument(inst.key)}
                                         title="Remove"
                                         className="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-red-400 transition-opacity"
                                     >
@@ -422,7 +489,7 @@ export function MarketWatch() {
                         );
                     })}
 
-                    {instruments.length === 0 && !loading && (
+                    {instruments.length === 0 && !loading && !watchlistLoading && (
                         <div className="flex flex-col items-center justify-center py-16 text-center">
                             <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-[#00d8ff]/10">
                                 <Search className="h-6 w-6 text-[#00d8ff]" />

@@ -10,6 +10,7 @@ import {
     getUpstoxToken,
     saveUpstoxToken,
 } from "@/db/upstox";
+import { serverEnv } from "@/lib/env/server";
 
 /**
  * Thrown only when the Upstox token is missing, expired, or rejected by Upstox
@@ -23,6 +24,11 @@ export class UpstoxAuthError extends Error {
         this.name = "UpstoxAuthError";
     }
 }
+
+type UpstoxApiErrorPayload = {
+    message?: string;
+    errors?: Array<{ message?: string }>;
+};
 
 /**
  * Upstox access tokens always expire daily at 03:30 AM IST (= 22:00 UTC the
@@ -43,14 +49,15 @@ export class UpstoxClient {
     private apiKey: string;
     private apiSecret: string;
     private redirectUri: string;
-    private baseUrl = "https://api.upstox.com";
+    private baseUrl: string;
     private userId: string;
     private axiosInstance: AxiosInstance;
 
     constructor(userId: string) {
-        this.apiKey = process.env.UPSTOX_API_KEY!;
-        this.apiSecret = process.env.UPSTOX_API_SECRET!;
-        this.redirectUri = process.env.UPSTOX_REDIRECT_URI!;
+        this.apiKey = serverEnv.upstoxApiKey;
+        this.apiSecret = serverEnv.upstoxApiSecret;
+        this.redirectUri = serverEnv.upstoxRedirectUri;
+        this.baseUrl = serverEnv.upstoxApiBaseUrl;
         this.userId = userId;
 
         this.axiosInstance = axios.create({
@@ -113,11 +120,17 @@ export class UpstoxClient {
             await saveUpstoxToken(this.userId, token);
 
             return token;
-        } catch (error: any) {
-            console.error("Error getting access token:", error.response?.data || error.message);
+        } catch (error: unknown) {
+            const payload = axios.isAxiosError<UpstoxApiErrorPayload>(error)
+                ? error.response?.data
+                : undefined;
+            console.error(
+                "Error getting access token:",
+                payload?.message ?? (error instanceof Error ? error.message : "Unknown error")
+            );
             throw new Error(
-                error.response?.data?.message ||
-                error.response?.data?.errors?.[0]?.message ||
+                payload?.message ||
+                payload?.errors?.[0]?.message ||
                 "Failed to exchange authorization code for token"
             );
         }
@@ -149,7 +162,7 @@ export class UpstoxClient {
     private async makeAuthenticatedRequest<T>(
         method: "GET" | "POST" | "PUT" | "DELETE",
         endpoint: string,
-        data?: any
+        data?: unknown
     ): Promise<T> {
         const accessToken = await this.getValidAccessToken();
         try {
@@ -162,8 +175,8 @@ export class UpstoxClient {
                 },
             });
             return response.data;
-        } catch (error: any) {
-            if (error?.response?.status === 401) {
+        } catch (error: unknown) {
+            if (axios.isAxiosError(error) && error.response?.status === 401) {
                 throw new UpstoxAuthError();
             }
             throw error;

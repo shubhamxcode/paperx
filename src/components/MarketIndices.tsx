@@ -58,9 +58,10 @@ export function MarketIndices() {
     };
 
     useEffect(() => {
-        fetchIndices();
+        const initialFetch = window.setTimeout(() => void fetchIndices(), 0);
         timerRef.current = setInterval(fetchIndices, 15000);
         return () => {
+            window.clearTimeout(initialFetch);
             if (timerRef.current) clearInterval(timerRef.current);
         };
     }, []);

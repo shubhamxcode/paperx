@@ -9,6 +9,7 @@ import { MarketWatch } from "@/components/MarketWatch";
 import { MarketIndices } from "@/components/MarketIndices";
 import { DashboardNav, type DashboardTab } from "@/components/dashboard/DashboardNav";
 import { TopStocks } from "@/components/dashboard/TopStocks";
+import { PortfolioTabs } from "@/components/dashboard/PortfolioTabs";
 import toast, { Toaster } from "react-hot-toast";
 
 function DashboardContent() {
@@ -46,7 +47,7 @@ function DashboardContent() {
     }, [checkStatus]);
 
     useEffect(() => {
-        checkStatus();
+        const initialStatusCheck = window.setTimeout(() => void checkStatus(), 0);
 
         // Check for Upstox connection status from URL params
         const upstoxConnected = searchParams.get("upstox_connected");
@@ -54,7 +55,7 @@ function DashboardContent() {
 
         if (upstoxConnected === "true") {
             toast.success("Upstox connected successfully!");
-            setShowMarketWatch(true);
+            window.setTimeout(() => setShowMarketWatch(true), 0);
             // Clean URL
             window.history.replaceState({}, "", "/dashboard");
         }
@@ -64,7 +65,8 @@ function DashboardContent() {
             // Clean URL
             window.history.replaceState({}, "", "/dashboard");
         }
-    }, [searchParams]);
+        return () => window.clearTimeout(initialStatusCheck);
+    }, [checkStatus, searchParams]);
 
     if (status === "loading") {
         return (
@@ -78,7 +80,7 @@ function DashboardContent() {
     }
 
     return (
-        <div className="min-h-screen bg-black">
+        <div className="paperx-dashboard min-h-screen bg-[#07090b] text-slate-100">
             <Toaster position="top-right" />
 
             {/* Header */}
@@ -93,7 +95,7 @@ function DashboardContent() {
             />
 
             {/* Main Content */}
-            <main className="max-w-7xl mx-auto px-6 py-6">
+            <main id="main-content" className="mx-auto max-w-7xl px-4 py-5 sm:px-6 sm:py-6">
                 {/* Connection Instructions */}
                 {!showMarketWatch && (
                     <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-8 mb-8">
@@ -115,8 +117,8 @@ function DashboardContent() {
                                         <span className="text-[#00d8ff] text-sm font-bold">1</span>
                                     </div>
                                     <div>
-                                        <p className="text-white font-medium">Click "Connect Upstox" above</p>
-                                        <p className="text-sm text-gray-400">You'll be redirected to Upstox login page</p>
+                                        <p className="text-white font-medium">Click &ldquo;Connect Upstox&rdquo; above</p>
+                                        <p className="text-sm text-gray-400">You&apos;ll be redirected to the Upstox login page</p>
                                     </div>
                                 </div>
                                 <div className="flex items-start gap-3">
@@ -155,28 +157,23 @@ function DashboardContent() {
                         <MarketIndices />
 
                         {(activeTab === "Holdings" || activeTab === "Positions" || activeTab === "Orders") && (
-                            <div className="flex flex-col items-center justify-center rounded-2xl border border-white/10 bg-white/5 py-20 text-center">
-                                <p className="text-lg font-semibold text-white">{activeTab}</p>
-                                <p className="mt-1 text-sm text-gray-500">Coming soon — this section is part of the paper-trading engine.</p>
-                            </div>
+                            <PortfolioTabs tab={activeTab} />
                         )}
 
                         {activeTab === "Explore" && <TopStocks />}
 
                         {activeTab === "Watchlist" && (
-                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
                         <div className="lg:col-span-2">
                             <MarketWatch />
                         </div>
 
                         <div className="space-y-6">
-                            {/* Portfolio Summary Placeholder */}
-                            <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
-                                <h3 className="text-lg font-bold text-white mb-4">Portfolio</h3>
-                                <div className="text-center py-8 text-gray-400">
-                                    <p className="mb-2">Coming soon!</p>
-                                    <p className="text-sm">Track your paper trading positions here</p>
-                                </div>
+                            <div className="rounded-2xl border border-white/10 bg-[#0b0d10] p-6">
+                                <h3 className="mb-2 text-base font-semibold normal-case tracking-normal text-white">How watchlists work</h3>
+                                <p className="text-sm text-slate-400">
+                                    Search any supported NSE or BSE instrument, then PaperX subscribes to its live Upstox price feed.
+                                </p>
                             </div>
                         </div>
                         </div>

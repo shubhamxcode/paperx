@@ -1,5 +1,12 @@
 "use client";
 
+/*
+ * Three.js and Canvas objects are intentionally mutable inside animation
+ * frames. React's immutability lint rules target render state and therefore do
+ * not model these imperative graphics objects correctly.
+ */
+/* eslint-disable react-hooks/immutability, react-hooks/globals */
+
 import { useMemo, useRef } from "react";
 import * as THREE from "three";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";

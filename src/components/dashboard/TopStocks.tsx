@@ -1,20 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Plus, Check, TrendingUp, TrendingDown } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Activity, Check, Plus, TrendingDown, TrendingUp } from "lucide-react";
 import { useWatchlist } from "@/lib/useWatchlist";
 
-// Curated, liquid large-cap NSE stocks. Keys verified against the instrument
-// master in the DB. These are recommendations to populate the Explore tab;
-// every NSE/BSE stock remains searchable.
-const POPULAR: { key: string; symbol: string; name: string }[] = [
+const STOCKS = [
     { key: "NSE_EQ|INE002A01018", symbol: "RELIANCE", name: "Reliance Industries" },
-    { key: "NSE_EQ|INE467B01029", symbol: "TCS", name: "Tata Consultancy Serv." },
+    { key: "NSE_EQ|INE467B01029", symbol: "TCS", name: "Tata Consultancy Services" },
     { key: "NSE_EQ|INE040A01034", symbol: "HDFCBANK", name: "HDFC Bank" },
     { key: "NSE_EQ|INE009A01021", symbol: "INFY", name: "Infosys" },
     { key: "NSE_EQ|INE090A01021", symbol: "ICICIBANK", name: "ICICI Bank" },
     { key: "NSE_EQ|INE062A01020", symbol: "SBIN", name: "State Bank of India" },
-    { key: "NSE_EQ|INE154A01025", symbol: "ITC", name: "ITC Ltd" },
+    { key: "NSE_EQ|INE154A01025", symbol: "ITC", name: "ITC" },
     { key: "NSE_EQ|INE397D01024", symbol: "BHARTIARTL", name: "Bharti Airtel" },
     { key: "NSE_EQ|INE018A01030", symbol: "LT", name: "Larsen & Toubro" },
     { key: "NSE_EQ|INE585B01010", symbol: "MARUTI", name: "Maruti Suzuki" },
@@ -23,107 +20,205 @@ const POPULAR: { key: string; symbol: string; name: string }[] = [
 ];
 
 interface Quote {
-    last_price: number;
-    net_change: number;
+    lastPrice: number;
+    netChange: number;
+    volume: number;
+}
+
+type MoverFilter = "Gainers" | "Losers" | "Most active";
+
+const formatPrice = (value: number) =>
+    value.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+const percentChange = (quote?: Quote) => {
+    if (!quote) return 0;
+    const previousClose = quote.lastPrice - quote.netChange;
+    return previousClose ? (quote.netChange / previousClose) * 100 : 0;
+};
+
+function StockLogo({ symbol }: { symbol: string }) {
+    return (
+        <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-cyan-400/10 bg-cyan-400/[0.07] text-xs font-bold tracking-wide text-cyan-300">
+            {symbol.slice(0, 2)}
+        </div>
+    );
 }
 
 export function TopStocks() {
     const { add, has } = useWatchlist();
     const [quotes, setQuotes] = useState<Map<string, Quote>>(new Map());
+    const [filter, setFilter] = useState<MoverFilter>("Gainers");
+    const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         const fetchQuotes = async () => {
             try {
                 const params = new URLSearchParams();
-                POPULAR.forEach((s) => params.append("instrument_key", s.key));
-                const res = await fetch(`/api/upstox/market/quotes?${params.toString()}`);
-                if (!res.ok) {
-                    const body = await res.json().catch(() => ({}));
+                STOCKS.forEach((stock) => params.append("instrument_key", stock.key));
+                const response = await fetch(`/api/upstox/market/quotes?${params.toString()}`);
+                if (!response.ok) {
+                    const body = await response.json().catch(() => ({}));
                     if (body?.reconnect) window.dispatchEvent(new Event("paperx_upstox_unauthorized"));
                     return;
                 }
-                const result = await res.json();
-                if (!result.data) return;
-                const map = new Map<string, Quote>();
-                Object.values(result.data as Record<string, {
-                    instrument_token?: string;
-                    instrument_key?: string;
-                    last_price?: number;
-                    net_change?: number;
-                }>).forEach((q) => {
-                    const key = q.instrument_token || q.instrument_key;
-                    const match = POPULAR.find((s) => s.key === key);
-                    if (match) map.set(match.key, { last_price: q.last_price || 0, net_change: q.net_change || 0 });
+                const result = await response.json();
+                const next = new Map<string, Quote>();
+                Object.values(result.data ?? {}).forEach((raw) => {
+                    const quote = raw as {
+                        instrument_token?: string;
+                        instrument_key?: string;
+                        last_price?: number;
+                        net_change?: number;
+                        volume?: number;
+                    };
+                    const key = quote.instrument_token || quote.instrument_key;
+                    if (key && STOCKS.some((stock) => stock.key === key)) {
+                        next.set(key, {
+                            lastPrice: quote.last_price ?? 0,
+                            netChange: quote.net_change ?? 0,
+                            volume: quote.volume ?? 0,
+                        });
+                    }
                 });
-                setQuotes(map);
-            } catch {
-                // ignore; ticker/cards just show placeholders
+                setQuotes(next);
+            } finally {
+                setLoading(false);
             }
         };
-        fetchQuotes();
-        const t = setInterval(fetchQuotes, 20000);
-        return () => clearInterval(t);
+
+        void fetchQuotes();
+        const timer = window.setInterval(fetchQuotes, 20_000);
+        return () => window.clearInterval(timer);
     }, []);
 
+    const ranked = useMemo(() => {
+        const rows = STOCKS.map((stock) => ({ ...stock, quote: quotes.get(stock.key) }));
+        if (filter === "Most active") {
+            return rows.sort((a, b) => (b.quote?.volume ?? 0) - (a.quote?.volume ?? 0)).slice(0, 6);
+        }
+        return rows
+            .sort((a, b) =>
+                filter === "Gainers"
+                    ? percentChange(b.quote) - percentChange(a.quote)
+                    : percentChange(a.quote) - percentChange(b.quote)
+            )
+            .slice(0, 6);
+    }, [filter, quotes]);
+
+    const mostTraded = useMemo(
+        () =>
+            STOCKS.map((stock) => ({ ...stock, quote: quotes.get(stock.key) }))
+                .sort((a, b) => (b.quote?.volume ?? 0) - (a.quote?.volume ?? 0))
+                .slice(0, 4),
+        [quotes]
+    );
+
     return (
-        <div className="rounded-2xl border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
-            <div className="mb-4 flex items-center justify-between">
-                <h2 className="text-xl font-bold text-white">Popular stocks</h2>
-                <span className="text-xs text-gray-500">Tap + to add to watchlist</span>
-            </div>
-
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                {POPULAR.map((s) => {
-                    const q = quotes.get(s.key);
-                    const price = q?.last_price ?? 0;
-                    const change = q?.net_change ?? 0;
-                    const prev = price - change;
-                    const pct = prev !== 0 ? ((change / prev) * 100).toFixed(2) : "0.00";
-                    const positive = change >= 0;
-                    const added = has(s.key);
-
-                    return (
-                        <div
-                            key={s.key}
-                            className="group flex items-center gap-3 rounded-xl border border-white/10 bg-black/30 p-4 transition-colors hover:border-white/20"
-                        >
-                            <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-[#00d8ff]/10 text-sm font-bold text-[#00d8ff]">
-                                {s.symbol.slice(0, 2)}
-                            </div>
-
-                            <div className="min-w-0 flex-1">
-                                <p className="truncate text-sm font-semibold text-white">{s.symbol}</p>
-                                <p className="truncate text-xs text-gray-500">{s.name}</p>
-                            </div>
-
-                            <div className="text-right">
-                                <p className="text-sm font-bold text-white">
-                                    {price > 0 ? `₹${price.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"}
+        <div className="space-y-8">
+            <section aria-labelledby="most-traded-heading">
+                <div className="mb-4 flex items-end justify-between gap-4">
+                    <div>
+                        <p className="mb-1 text-xs font-medium uppercase tracking-[0.16em] text-cyan-400">Market pulse</p>
+                        <h1 id="most-traded-heading" className="text-xl font-semibold normal-case tracking-tight text-white sm:text-2xl">
+                            Most traded stocks
+                        </h1>
+                    </div>
+                    <p className="hidden text-xs text-slate-500 sm:block">Ranked by today&apos;s Upstox volume</p>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                    {mostTraded.map((stock) => {
+                        const change = percentChange(stock.quote);
+                        const positive = change >= 0;
+                        return (
+                            <article key={stock.key} className="group rounded-2xl border border-white/10 bg-[#0b0d10] p-4 transition-colors hover:border-white/20">
+                                <div className="flex items-start justify-between gap-3">
+                                    <StockLogo symbol={stock.symbol} />
+                                    <button
+                                        onClick={() => void add({ key: stock.key, symbol: stock.symbol, exchange: "NSE" }).catch(() => undefined)}
+                                        disabled={has(stock.key)}
+                                        className="paperx-icon-button"
+                                        aria-label={has(stock.key) ? `${stock.symbol} is in watchlist` : `Add ${stock.symbol} to watchlist`}
+                                    >
+                                        {has(stock.key) ? <Check className="h-4 w-4 text-emerald-400" /> : <Plus className="h-4 w-4" />}
+                                    </button>
+                                </div>
+                                <p className="mt-5 truncate text-sm font-semibold text-white">{stock.name}</p>
+                                <p className="mt-3 text-lg font-semibold text-white">
+                                    {stock.quote?.lastPrice ? `₹${formatPrice(stock.quote.lastPrice)}` : loading ? "Loading…" : "—"}
                                 </p>
-                                {q && (
-                                    <div className={`flex items-center justify-end gap-0.5 text-xs ${positive ? "text-green-400" : "text-red-400"}`}>
-                                        {positive ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
-                                        <span>{pct}%</span>
-                                    </div>
+                                {stock.quote && (
+                                    <p className={`mt-1 flex items-center gap-1 text-sm ${positive ? "text-emerald-400" : "text-red-400"}`}>
+                                        {positive ? <TrendingUp className="h-3.5 w-3.5" /> : <TrendingDown className="h-3.5 w-3.5" />}
+                                        {positive ? "+" : ""}{change.toFixed(2)}%
+                                    </p>
                                 )}
-                            </div>
+                            </article>
+                        );
+                    })}
+                </div>
+            </section>
 
+            <section className="overflow-hidden rounded-2xl border border-white/10 bg-[#0b0d10]" aria-labelledby="movers-heading">
+                <div className="flex flex-col gap-4 border-b border-white/10 px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+                    <div>
+                        <h2 id="movers-heading" className="text-lg font-semibold normal-case tracking-tight text-white">Top movers today</h2>
+                        <p className="mt-1 text-xs text-slate-500">Live movement from a curated set of liquid NSE stocks</p>
+                    </div>
+                    <div className="flex gap-2 overflow-x-auto" role="group" aria-label="Filter top movers">
+                        {(["Gainers", "Losers", "Most active"] as MoverFilter[]).map((item) => (
                             <button
-                                onClick={() => add({ key: s.key, symbol: s.symbol, exchange: "NSE" })}
-                                disabled={added}
-                                title={added ? "In watchlist" : "Add to watchlist"}
-                                className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border transition-colors ${
-                                    added
-                                        ? "border-green-500/30 text-green-400"
-                                        : "border-white/10 text-gray-400 hover:border-[#00d8ff]/40 hover:text-[#00d8ff]"
+                                key={item}
+                                onClick={() => setFilter(item)}
+                                aria-pressed={filter === item}
+                                className={`whitespace-nowrap rounded-full border px-4 py-2 text-xs font-medium transition-colors ${
+                                    filter === item
+                                        ? "border-cyan-400/40 bg-cyan-400/10 text-cyan-300"
+                                        : "border-white/10 text-slate-400 hover:border-white/20 hover:text-white"
                                 }`}
                             >
-                                {added ? <Check className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+                                {item}
                             </button>
-                        </div>
-                    );
-                })}
-            </div>
+                        ))}
+                    </div>
+                </div>
+                <div className="grid grid-cols-[1fr_auto_auto] gap-3 border-b border-white/[0.07] px-5 py-3 text-[11px] uppercase tracking-wider text-slate-500 sm:grid-cols-[1fr_170px_130px] sm:px-6">
+                    <span>Company</span>
+                    <span className="text-right">Market price</span>
+                    <span className="hidden text-right sm:block">{filter === "Most active" ? "Volume" : "Change"}</span>
+                </div>
+                <div className="divide-y divide-white/[0.07]">
+                    {ranked.map((stock) => {
+                        const change = percentChange(stock.quote);
+                        const positive = change >= 0;
+                        return (
+                            <div key={stock.key} className="grid grid-cols-[1fr_auto_auto] items-center gap-3 px-5 py-4 transition-colors hover:bg-white/[0.025] sm:grid-cols-[1fr_170px_130px] sm:px-6">
+                                <div className="flex min-w-0 items-center gap-3">
+                                    <StockLogo symbol={stock.symbol} />
+                                    <div className="min-w-0">
+                                        <p className="truncate text-sm font-semibold text-white">{stock.symbol}</p>
+                                        <p className="truncate text-xs text-slate-500">{stock.name}</p>
+                                    </div>
+                                </div>
+                                <div className="text-right">
+                                    <p className="text-sm font-medium text-white">{stock.quote?.lastPrice ? `₹${formatPrice(stock.quote.lastPrice)}` : "—"}</p>
+                                    <p className={`mt-1 text-xs sm:hidden ${positive ? "text-emerald-400" : "text-red-400"}`}>
+                                        {positive ? "+" : ""}{change.toFixed(2)}%
+                                    </p>
+                                </div>
+                                <div className={`hidden text-right text-sm sm:block ${positive ? "text-emerald-400" : "text-red-400"}`}>
+                                    {filter === "Most active"
+                                        ? new Intl.NumberFormat("en-IN", { notation: "compact" }).format(stock.quote?.volume ?? 0)
+                                        : `${positive ? "+" : ""}${change.toFixed(2)}%`}
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+                <div className="flex items-center gap-2 border-t border-white/[0.07] px-5 py-3 text-xs text-slate-500 sm:px-6">
+                    <Activity className="h-3.5 w-3.5 text-cyan-400" />
+                    Prices refresh every 20 seconds; your watchlist uses the live Upstox feed.
+                </div>
+            </section>
         </div>
     );
 }

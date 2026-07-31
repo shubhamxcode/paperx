@@ -1,12 +1,14 @@
 import {
+  bigint,
   boolean,
+  index,
   integer,
   pgTable,
   primaryKey,
   real,
-
   text,
   timestamp,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import type { AdapterAccountType } from "@auth/core/adapters";
 
@@ -89,6 +91,144 @@ export const instruments = pgTable("instrument", {
   weekly: boolean("weekly"),
   updatedAt: timestamp("updatedAt", { mode: "date" }).notNull().defaultNow(),
 });
+
+// =============================================
+// Paper Trading Engine
+// All money is stored as integer paise (₹1 = 100 paise) — never floats.
+// =============================================
+
+/** Every user starts with ₹10,00,000 of virtual capital. */
+export const STARTING_BALANCE_PAISE = 100_000_000;
+
+export const wallets = pgTable("wallet", {
+  userId: text("userId")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  balancePaise: bigint("balancePaise", { mode: "number" })
+    .notNull()
+    .default(STARTING_BALANCE_PAISE),
+  createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
+  updatedAt: timestamp("updatedAt", { mode: "date" }).notNull().defaultNow(),
+});
+
+// Product preferences only. We intentionally do not collect trading experience
+// or suitability survey data; PaperX is designed for beginners by default.
+export const userSettings = pgTable("user_setting", {
+  userId: text("userId")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  preferredExchange: text("preferredExchange")
+    .$type<"NSE" | "BSE">()
+    .notNull()
+    .default("NSE"),
+  chartInterval: text("chartInterval")
+    .$type<"1m" | "5m" | "15m" | "1D">()
+    .notNull()
+    .default("5m"),
+  defaultProduct: text("defaultProduct")
+    .$type<"DELIVERY" | "INTRADAY">()
+    .notNull()
+    .default("DELIVERY"),
+  orderConfirmation: boolean("orderConfirmation").notNull().default(true),
+  orderUpdates: boolean("orderUpdates").notNull().default(true),
+  marketAlerts: boolean("marketAlerts").notNull().default(false),
+  learningReminders: boolean("learningReminders").notNull().default(true),
+  compactMode: boolean("compactMode").notNull().default(false),
+  createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
+  updatedAt: timestamp("updatedAt", { mode: "date" }).notNull().defaultNow(),
+});
+
+export const holdings = pgTable(
+  "holding",
+  {
+    userId: text("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    instrumentKey: text("instrumentKey")
+      .notNull()
+      .references(() => instruments.instrumentKey),
+    quantity: integer("quantity").notNull(),
+    // volume-weighted average buy price per share
+    avgPricePaise: bigint("avgPricePaise", { mode: "number" }).notNull(),
+    updatedAt: timestamp("updatedAt", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.instrumentKey] })]
+);
+
+export const orders = pgTable(
+  "order",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    userId: text("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    instrumentKey: text("instrumentKey")
+      .notNull()
+      .references(() => instruments.instrumentKey),
+    side: text("side").$type<"BUY" | "SELL">().notNull(),
+    quantity: integer("quantity").notNull(),
+    // execution (or attempted) price per share at order time
+    pricePaise: bigint("pricePaise", { mode: "number" }).notNull(),
+    totalPaise: bigint("totalPaise", { mode: "number" }).notNull(),
+    // rejected orders are kept as an audit trail
+    status: text("status").$type<"FILLED" | "REJECTED">().notNull(),
+    reason: text("reason"),
+    createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [index("order_user_created_idx").on(t.userId, t.createdAt)]
+);
+
+// =============================================
+// User Watchlists
+// Persistent and account-owned; no user data is kept in browser storage.
+// =============================================
+
+export const watchlists = pgTable(
+  "watchlist",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    userId: text("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull().default("My Watchlist"),
+    isDefault: boolean("isDefault").notNull().default(true),
+    createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("watchlist_user_name_idx").on(t.userId, t.name),
+    index("watchlist_user_idx").on(t.userId),
+  ]
+);
+
+export const watchlistItems = pgTable(
+  "watchlist_item",
+  {
+    watchlistId: text("watchlistId")
+      .notNull()
+      .references(() => watchlists.id, { onDelete: "cascade" }),
+    instrumentKey: text("instrumentKey")
+      .notNull()
+      .references(() => instruments.instrumentKey),
+    sortOrder: integer("sortOrder").notNull().default(0),
+    createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.watchlistId, t.instrumentKey] }),
+    index("watchlist_item_order_idx").on(t.watchlistId, t.sortOrder),
+  ]
+);
+
+export type Wallet = typeof wallets.$inferSelect;
+export type UserSetting = typeof userSettings.$inferSelect;
+export type Holding = typeof holdings.$inferSelect;
+export type Order = typeof orders.$inferSelect;
+export type Watchlist = typeof watchlists.$inferSelect;
+export type WatchlistItem = typeof watchlistItems.$inferSelect;
 
 export type Instrument = typeof instruments.$inferSelect;
 export type NewInstrument = typeof instruments.$inferInsert;

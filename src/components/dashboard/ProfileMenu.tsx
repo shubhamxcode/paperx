@@ -3,11 +3,38 @@
 import { useEffect, useRef, useState } from "react";
 import { signOut } from "next-auth/react";
 import { LogOut, User } from "lucide-react";
+import Link from "next/link";
 
 interface ProfileMenuProps {
     name?: string | null;
     email?: string | null;
     image?: string | null;
+}
+
+function ProfileAvatar({
+    size,
+    image,
+    name,
+    initials,
+}: {
+    size: number;
+    image?: string | null;
+    name?: string | null;
+    initials: string;
+}) {
+    return (
+        <span
+            className="flex items-center justify-center overflow-hidden rounded-full border border-white/15 bg-white/5 font-semibold text-white"
+            style={{ width: size, height: size, fontSize: size * 0.35 }}
+        >
+            {image ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={image} alt={name || "Profile"} className="h-full w-full object-cover" />
+            ) : (
+                initials
+            )}
+        </span>
+    );
 }
 
 export function ProfileMenu({ name, email, image }: ProfileMenuProps) {
@@ -45,20 +72,6 @@ export function ProfileMenu({ name, email, image }: ProfileMenuProps) {
         await signOut({ callbackUrl: "/" });
     };
 
-    const Avatar = ({ size }: { size: number }) => (
-        <span
-            className="flex items-center justify-center overflow-hidden rounded-full border border-white/15 bg-white/5 font-semibold text-white"
-            style={{ width: size, height: size, fontSize: size * 0.35 }}
-        >
-            {image ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={image} alt={name || "Profile"} className="h-full w-full object-cover" />
-            ) : (
-                initials
-            )}
-        </span>
-    );
-
     return (
         <div ref={ref} className="relative">
             <button
@@ -68,7 +81,7 @@ export function ProfileMenu({ name, email, image }: ProfileMenuProps) {
                 title={name || "Profile"}
                 className="block rounded-full transition-transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-[#00d8ff]/50"
             >
-                <Avatar size={36} />
+                <ProfileAvatar size={36} image={image} name={name} initials={initials} />
             </button>
 
             {open && (
@@ -78,7 +91,7 @@ export function ProfileMenu({ name, email, image }: ProfileMenuProps) {
                 >
                     {/* User details */}
                     <div className="flex items-center gap-3 border-b border-white/10 p-4">
-                        <Avatar size={44} />
+                        <ProfileAvatar size={44} image={image} name={name} initials={initials} />
                         <div className="min-w-0">
                             <p className="truncate text-sm font-semibold text-white">{name || "User"}</p>
                             <p className="truncate text-xs text-gray-400">{email || ""}</p>
@@ -87,15 +100,15 @@ export function ProfileMenu({ name, email, image }: ProfileMenuProps) {
 
                     {/* Actions */}
                     <div className="p-1.5">
-                        <button
-                            disabled
+                        <Link
+                            href="/profile"
+                            onClick={() => setOpen(false)}
                             role="menuitem"
-                            className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-gray-500"
+                            className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-gray-300 transition-colors hover:bg-white/5 hover:text-white"
                         >
                             <User className="h-4 w-4" />
                             Profile settings
-                            <span className="ml-auto text-[10px] uppercase tracking-wide text-gray-600">Soon</span>
-                        </button>
+                        </Link>
 
                         <button
                             onClick={handleLogout}

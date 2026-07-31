@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { UpstoxClient } from "@/lib/upstox/client";
+import { serverEnv } from "@/lib/env/server";
 
 export async function GET() {
     try {
@@ -27,7 +28,7 @@ export async function GET() {
         const response = NextResponse.redirect(authUrl);
         response.cookies.set("upstox_oauth_state", state, {
             httpOnly: true,
-            secure: true,
+            secure: serverEnv.secureCookies,
             sameSite: "lax", // must survive the cross-site redirect back from Upstox
             path: "/",
             maxAge: 60 * 10, // 10 minutes

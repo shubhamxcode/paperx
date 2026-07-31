@@ -29,11 +29,14 @@ export function DashboardNav({
     upstoxSlot,
 }: DashboardNavProps) {
     return (
-        <header className="sticky top-0 z-50 border-b border-white/10 bg-black/80 backdrop-blur-xl">
+        <header className="sticky top-0 z-50 border-b border-white/10 bg-[#07090b]/90 backdrop-blur-xl">
+            <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[60] focus:rounded-lg focus:bg-cyan-400 focus:px-4 focus:py-2 focus:text-black">
+                Skip to dashboard
+            </a>
             <div className="mx-auto max-w-7xl px-6">
                 {/* Row 1: brand + product links + search + icons */}
                 <div className="flex items-center gap-6 py-3">
-                    <div className="flex items-center gap-2">
+                    <div className="flex shrink-0 items-center gap-2">
                         <div className="rounded-lg border border-white/10 bg-white/5 p-2">
                             <TrendingUp className="h-5 w-5 text-[#00d8ff]" />
                         </div>
@@ -78,7 +81,7 @@ export function DashboardNav({
 
                 {/* Row 2: tabs + terminal/code */}
                 <div className="flex items-center justify-between border-t border-white/5">
-                    <nav className="flex items-center gap-6 overflow-x-auto">
+                    <nav className="flex items-center gap-5 overflow-x-auto sm:gap-6" aria-label="Portfolio sections">
                         {TABS.map((tab) => {
                             const active = tab === activeTab;
                             return (
