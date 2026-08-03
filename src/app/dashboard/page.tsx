@@ -7,7 +7,11 @@ import { TrendingUp } from "lucide-react";
 import { UpstoxConnect } from "@/components/UpstoxConnect";
 import { MarketWatch } from "@/components/MarketWatch";
 import { MarketIndices } from "@/components/MarketIndices";
-import { DashboardNav, type DashboardTab } from "@/components/dashboard/DashboardNav";
+import {
+    DashboardNav,
+    type DashboardTab,
+    type InstrumentSearchResult,
+} from "@/components/dashboard/DashboardNav";
 import { TopStocks } from "@/components/dashboard/TopStocks";
 import { PortfolioTabs } from "@/components/dashboard/PortfolioTabs";
 import toast, { Toaster } from "react-hot-toast";
@@ -19,6 +23,10 @@ function DashboardContent() {
     const [showMarketWatch, setShowMarketWatch] = useState(false);
     const [upstoxExpired, setUpstoxExpired] = useState(false);
     const [activeTab, setActiveTab] = useState<DashboardTab>("Explore");
+
+    const openGlobalSearchResult = useCallback(async (instrument: InstrumentSearchResult) => {
+        router.push(`/stocks/${encodeURIComponent(instrument.instrumentKey)}`);
+    }, [router]);
 
     useEffect(() => {
         if (status === "unauthenticated") {
@@ -90,7 +98,7 @@ function DashboardContent() {
                 userImage={session?.user?.image}
                 activeTab={activeTab}
                 onTabChange={setActiveTab}
-                onSearchClick={() => toast("Global search — coming next step")}
+                onInstrumentSelect={openGlobalSearchResult}
                 upstoxSlot={<UpstoxConnect />}
             />
 

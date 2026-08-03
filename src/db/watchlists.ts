@@ -9,6 +9,7 @@ export type WatchlistInstrument = {
   key: string;
   symbol: string;
   exchange: string;
+  logoUrl: string | null;
 };
 
 /** Return the user's default watchlist, creating it exactly once if needed. */
@@ -40,6 +41,7 @@ export async function getDefaultWatchlist(userId: string) {
       key: instruments.instrumentKey,
       symbol: instruments.tradingSymbol,
       exchange: instruments.exchange,
+      logoUrl: instruments.logoUrl,
     })
     .from(watchlistItems)
     .innerJoin(
@@ -63,6 +65,7 @@ export async function addDefaultWatchlistItem(
         key: instruments.instrumentKey,
         symbol: instruments.tradingSymbol,
         exchange: instruments.exchange,
+        logoUrl: instruments.logoUrl,
       })
       .from(instruments)
       .where(eq(instruments.instrumentKey, instrumentKey))

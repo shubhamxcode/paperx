@@ -1,8 +1,10 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { TrendingUp, TrendingDown, Activity, Search, X, ArrowUp, ArrowDown } from "lucide-react";
 import { useWatchlist, type WatchInstrument } from "@/lib/useWatchlist";
+import { StockLogo } from "@/components/StockLogo";
+import { sharedUpstoxMarketFeed } from "@/lib/upstox/market-feed";
 
 interface MarketData {
     instrument_key: string;
@@ -22,6 +24,7 @@ interface SearchResult {
     name: string | null;
     exchange: string;
     segment: string;
+    logoUrl: string | null;
 }
 
 interface QuotePayload {
@@ -31,10 +34,6 @@ interface QuotePayload {
     net_change?: number;
     volume?: number;
     last_traded_time?: string;
-}
-
-interface LegacyFeedPayload {
-    ff?: { marketFF?: { ltpc?: { ltp?: number; ltq?: number; ltt?: string } } };
 }
 
 export function MarketWatch() {
@@ -59,11 +58,6 @@ export function MarketWatch() {
     const [searching, setSearching] = useState(false);
     const [showResults, setShowResults] = useState(false);
 
-    const wsRef = useRef<WebSocket | null>(null);
-    const instrumentsRef = useRef<Instrument[]>(instruments);
-    const subscribedRef = useRef<Set<string>>(new Set());
-    instrumentsRef.current = instruments;
-
     // Re-fetch REST quotes whenever the watchlist changes
     useEffect(() => {
         if (instruments.length > 0) {
@@ -74,18 +68,35 @@ export function MarketWatch() {
         }
     }, [instruments]);
 
-    // Open the WebSocket once
+    // Subscribe through the one shared V3 socket for this browser session.
     useEffect(() => {
-        setupWebSocket();
-        return () => {
-            wsRef.current?.close();
-        };
-    }, []);
-
-    // Keep WebSocket subscriptions in sync with the watchlist
-    useEffect(() => {
-        syncSubscriptions();
-    }, [instruments, wsConnected]);
+        if (instruments.length === 0) {
+            setWsConnected(false);
+            return;
+        }
+        const cleanups = instruments.map((instrument) =>
+            sharedUpstoxMarketFeed.subscribe(instrument.key, "ltpc", (update) => {
+                setWsConnected(true);
+                setMarketData((previous) => {
+                    const next = new Map(previous);
+                    const existing = next.get(instrument.key);
+                    const lastPrice = update.lastPrice ?? existing?.last_price ?? 0;
+                    const closePrice = update.closePrice;
+                    next.set(instrument.key, {
+                        instrument_key: instrument.key,
+                        symbol: instrument.symbol,
+                        exchange: instrument.exchange,
+                        last_price: lastPrice,
+                        net_change: closePrice != null ? lastPrice - closePrice : existing?.net_change ?? 0,
+                        volume: update.volume ?? existing?.volume ?? 0,
+                        last_traded_time: update.lastTradeTime != null ? String(update.lastTradeTime) : existing?.last_traded_time,
+                    });
+                    return next;
+                });
+            })
+        );
+        return () => cleanups.forEach((cleanup) => cleanup());
+    }, [instruments]);
 
     // Debounced instrument search
     useEffect(() => {
@@ -162,104 +173,10 @@ export function MarketWatch() {
         }
     };
 
-    const setupWebSocket = async () => {
-        try {
-            const response = await fetch("/api/upstox/websocket/auth");
-            const data = await response.json();
-
-            if (!data.data?.authorizedRedirectUri) {
-                console.error("No WebSocket URL received");
-                return;
-            }
-
-            const ws = new WebSocket(data.data.authorizedRedirectUri);
-            wsRef.current = ws;
-
-            ws.onopen = () => {
-                console.log("WebSocket connected");
-                subscribedRef.current.clear(); // fresh connection, nothing subscribed yet
-                setWsConnected(true); // triggers syncSubscriptions effect
-            };
-
-            ws.onmessage = (event) => {
-                try {
-                    const message = JSON.parse(event.data);
-                    if (message.type === "feed" && message.feeds) {
-                        setMarketData((prev) => {
-                            const newMap = new Map(prev);
-                            Object.entries(message.feeds as Record<string, LegacyFeedPayload>).forEach(([key, feed]) => {
-                                const existing = newMap.get(key);
-                                const instrument = instrumentsRef.current.find((i) => i.key === key);
-                                if (instrument && feed.ff?.marketFF?.ltpc) {
-                                    const ltpc = feed.ff.marketFF.ltpc;
-                                    newMap.set(key, {
-                                        instrument_key: key,
-                                        symbol: instrument.symbol,
-                                        exchange: instrument.exchange,
-                                        last_price: ltpc.ltp || existing?.last_price || 0,
-                                        net_change: existing?.net_change || 0,
-                                        volume: ltpc.ltq || existing?.volume || 0,
-                                        last_traded_time: ltpc.ltt,
-                                    });
-                                }
-                            });
-                            return newMap;
-                        });
-                    }
-                } catch (err) {
-                    console.error("Error parsing WebSocket message:", err);
-                }
-            };
-
-            ws.onerror = (error) => {
-                console.error("WebSocket error:", error);
-                setWsConnected(false);
-            };
-
-            ws.onclose = () => {
-                console.log("WebSocket disconnected");
-                setWsConnected(false);
-            };
-        } catch (err) {
-            console.error("Error setting up WebSocket:", err);
-        }
-    };
-
-    // Diff the watchlist against current subscriptions and sub/unsub the delta
-    const syncSubscriptions = () => {
-        const ws = wsRef.current;
-        if (!ws || ws.readyState !== WebSocket.OPEN) return;
-
-        const desired = new Set(instrumentsRef.current.map((i) => i.key));
-        const subbed = subscribedRef.current;
-        const toSub = [...desired].filter((k) => !subbed.has(k));
-        const toUnsub = [...subbed].filter((k) => !desired.has(k));
-
-        if (toSub.length > 0) {
-            ws.send(
-                JSON.stringify({
-                    guid: `sub-${Date.now()}`,
-                    method: "sub",
-                    data: { mode: "ltpc", instrumentKeys: toSub },
-                })
-            );
-            toSub.forEach((k) => subbed.add(k));
-        }
-        if (toUnsub.length > 0) {
-            ws.send(
-                JSON.stringify({
-                    guid: `unsub-${Date.now()}`,
-                    method: "unsub",
-                    data: { mode: "ltpc", instrumentKeys: toUnsub },
-                })
-            );
-            toUnsub.forEach((k) => subbed.delete(k));
-        }
-    };
 
     const addInstrument = async (r: SearchResult) => {
         try {
-            await add({ key: r.instrumentKey, symbol: r.tradingSymbol, exchange: r.exchange });
+            await add({ key: r.instrumentKey, symbol: r.tradingSymbol, exchange: r.exchange, logoUrl: r.logoUrl });
             setQuery("");
             setResults([]);
             setShowResults(false);
@@ -359,12 +276,15 @@ export function MarketWatch() {
                                     disabled={already}
                                     className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-white/5 text-left disabled:opacity-40"
                                 >
-                                    <div className="min-w-0">
+                                    <div className="flex min-w-0 items-center gap-3">
+                                        <StockLogo symbol={r.tradingSymbol} logoUrl={r.logoUrl} size={36} />
+                                        <div className="min-w-0">
                                         <p className="text-white text-sm font-medium truncate">
                                             {r.tradingSymbol}{" "}
                                             <span className="text-xs text-gray-500">{r.exchange}</span>
                                         </p>
                                         <p className="text-xs text-gray-500 truncate">{r.name}</p>
+                                        </div>
                                     </div>
                                     <span className="text-xs text-[#00d8ff] flex-shrink-0 ml-2">
                                         {already ? "Added" : "+ Add"}
@@ -417,9 +337,12 @@ export function MarketWatch() {
                                 key={inst.key}
                                 className="group flex items-center justify-between p-4 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-colors"
                             >
-                                <div className="flex-1 min-w-0">
+                                <div className="flex flex-1 min-w-0 items-center gap-3">
+                                    <StockLogo symbol={inst.symbol} logoUrl={inst.logoUrl} size={40} />
+                                    <div className="min-w-0">
                                     <h3 className="font-semibold text-white truncate">{inst.symbol}</h3>
                                     <p className="text-xs text-gray-400">{inst.exchange}</p>
+                                    </div>
                                 </div>
 
                                 <div className="flex-1 text-right">

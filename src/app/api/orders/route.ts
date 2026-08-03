@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { db } from "@/db";
 import { instruments, orders } from "@/db/schema";
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 
 const MAX_LIMIT = 100;
 
@@ -38,8 +38,9 @@ export async function GET(req: NextRequest) {
         reason: orders.reason,
         createdAt: orders.createdAt,
         tradingSymbol: instruments.tradingSymbol,
-        name: instruments.name,
+        name: sql<string | null>`coalesce(${instruments.shortName}, ${instruments.name})`,
         exchange: instruments.exchange,
+        logoUrl: instruments.logoUrl,
       })
       .from(orders)
       .innerJoin(instruments, eq(orders.instrumentKey, instruments.instrumentKey))

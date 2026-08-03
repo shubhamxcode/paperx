@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Activity, Check, Plus, TrendingDown, TrendingUp } from "lucide-react";
 import { useWatchlist } from "@/lib/useWatchlist";
+import { StockLogo } from "@/components/StockLogo";
+import Link from "next/link";
 
 const STOCKS = [
     { key: "NSE_EQ|INE002A01018", symbol: "RELIANCE", name: "Reliance Industries" },
@@ -36,19 +38,23 @@ const percentChange = (quote?: Quote) => {
     return previousClose ? (quote.netChange / previousClose) * 100 : 0;
 };
 
-function StockLogo({ symbol }: { symbol: string }) {
-    return (
-        <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-cyan-400/10 bg-cyan-400/[0.07] text-xs font-bold tracking-wide text-cyan-300">
-            {symbol.slice(0, 2)}
-        </div>
-    );
-}
-
 export function TopStocks() {
     const { add, has } = useWatchlist();
     const [quotes, setQuotes] = useState<Map<string, Quote>>(new Map());
     const [filter, setFilter] = useState<MoverFilter>("Gainers");
     const [loading, setLoading] = useState(true);
+    const [logos, setLogos] = useState<Map<string, string | null>>(new Map());
+
+    useEffect(() => {
+        const controller = new AbortController();
+        const params = new URLSearchParams();
+        STOCKS.forEach((stock) => params.append("instrument_key", stock.key));
+        fetch(`/api/instruments/metadata?${params.toString()}`, { signal: controller.signal })
+            .then((response) => response.ok ? response.json() : { instruments: [] })
+            .then((body) => setLogos(new Map((body.instruments ?? []).map((item: { instrumentKey: string; logoUrl: string | null }) => [item.instrumentKey, item.logoUrl]))))
+            .catch((error) => { if (!(error instanceof DOMException && error.name === "AbortError")) setLogos(new Map()); });
+        return () => controller.abort();
+    }, []);
 
     useEffect(() => {
         const fetchQuotes = async () => {
@@ -130,13 +136,14 @@ export function TopStocks() {
                         const change = percentChange(stock.quote);
                         const positive = change >= 0;
                         return (
-                            <article key={stock.key} className="group rounded-2xl border border-white/10 bg-[#0b0d10] p-4 transition-colors hover:border-white/20">
+                            <article key={stock.key} className="group relative rounded-2xl border border-white/10 bg-[#0b0d10] p-4 transition-colors hover:border-white/20">
+                                <Link href={`/stocks/${encodeURIComponent(stock.key)}`} className="absolute inset-0 rounded-2xl" aria-label={`Open ${stock.name}`} />
                                 <div className="flex items-start justify-between gap-3">
-                                    <StockLogo symbol={stock.symbol} />
+                                    <StockLogo symbol={stock.symbol} logoUrl={logos.get(stock.key)} />
                                     <button
-                                        onClick={() => void add({ key: stock.key, symbol: stock.symbol, exchange: "NSE" }).catch(() => undefined)}
+                                        className="paperx-icon-button relative z-10"
+                                        onClick={() => void add({ key: stock.key, symbol: stock.symbol, exchange: "NSE", logoUrl: logos.get(stock.key) ?? null }).catch(() => undefined)}
                                         disabled={has(stock.key)}
-                                        className="paperx-icon-button"
                                         aria-label={has(stock.key) ? `${stock.symbol} is in watchlist` : `Add ${stock.symbol} to watchlist`}
                                     >
                                         {has(stock.key) ? <Check className="h-4 w-4 text-emerald-400" /> : <Plus className="h-4 w-4" />}
@@ -191,9 +198,9 @@ export function TopStocks() {
                         const change = percentChange(stock.quote);
                         const positive = change >= 0;
                         return (
-                            <div key={stock.key} className="grid grid-cols-[1fr_auto_auto] items-center gap-3 px-5 py-4 transition-colors hover:bg-white/[0.025] sm:grid-cols-[1fr_170px_130px] sm:px-6">
+                            <Link href={`/stocks/${encodeURIComponent(stock.key)}`} key={stock.key} className="grid grid-cols-[1fr_auto_auto] items-center gap-3 px-5 py-4 transition-colors hover:bg-white/[0.025] sm:grid-cols-[1fr_170px_130px] sm:px-6">
                                 <div className="flex min-w-0 items-center gap-3">
-                                    <StockLogo symbol={stock.symbol} />
+                                    <StockLogo symbol={stock.symbol} logoUrl={logos.get(stock.key)} />
                                     <div className="min-w-0">
                                         <p className="truncate text-sm font-semibold text-white">{stock.symbol}</p>
                                         <p className="truncate text-xs text-slate-500">{stock.name}</p>
@@ -210,7 +217,7 @@ export function TopStocks() {
                                         ? new Intl.NumberFormat("en-IN", { notation: "compact" }).format(stock.quote?.volume ?? 0)
                                         : `${positive ? "+" : ""}${change.toFixed(2)}%`}
                                 </div>
-                            </div>
+                            </Link>
                         );
                     })}
                 </div>

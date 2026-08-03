@@ -8,6 +8,7 @@
  */
 import * as fs from "fs";
 import * as path from "path";
+import { instrumentDisplayName } from "./src/lib/instruments/display-name";
 
 // --- Load .env FIRST (before importing the DB client) ---
 const envPath = path.resolve(process.cwd(), ".env");
@@ -38,6 +39,7 @@ type RawInstrument = {
     instrument_key: string;
     trading_symbol: string;
     name?: string;
+    short_name?: string;
     exchange: string;
     segment: string;
     instrument_type?: string;
@@ -58,9 +60,27 @@ async function main() {
         process.exit(1);
     }
 
-    // Dynamic import so .env is loaded before the DB pool is created.
-    const { db } = await import("./src/db");
-    const { instruments } = await import("./src/db/schema");
+    // Create the script's own pool so Next.js-only server guards stay intact.
+    const [{ drizzle }, { Pool }, schema] = await Promise.all([
+        import("drizzle-orm/node-postgres"),
+        import("pg"),
+        import("./src/db/schema"),
+    ]);
+    const databaseUrl = process.env.DATABASE_URL?.trim();
+    const brandfetchClientId = process.env.BRANDFETCH_CLIENT_ID?.trim();
+    const brandfetchBaseUrl = (process.env.BRANDFETCH_LOGO_BASE_URL?.trim() || "https://cdn.brandfetch.io").replace(/\/$/, "");
+    if (!databaseUrl) throw new Error("DATABASE_URL is required");
+    if (!brandfetchClientId || !/^[A-Za-z0-9_-]{6,128}$/.test(brandfetchClientId)) throw new Error("BRANDFETCH_CLIENT_ID is missing or invalid");
+    const pool = new Pool({ connectionString: databaseUrl });
+    const db = drizzle(pool, { schema });
+    const { instruments } = schema;
+    const brandfetchLogoUrl = (isin?: string) => {
+        const normalized = isin?.trim().toUpperCase();
+        if (!normalized || !/^[A-Z]{2}[A-Z0-9]{9}[0-9]$/.test(normalized)) return null;
+        const url = new URL(`/isin/${encodeURIComponent(normalized)}`, brandfetchBaseUrl);
+        url.searchParams.set("c", brandfetchClientId);
+        return url.toString();
+    };
 
     console.log("Reading", FILE, "...");
     const raw: RawInstrument[] = JSON.parse(fs.readFileSync(FILE, "utf8"));
@@ -68,14 +88,25 @@ async function main() {
 
     const rows = raw
         .filter((r) => SEGMENTS.has(r.segment))
-        .map((r) => ({
+        .map((r) => {
+          const logoUrl = brandfetchLogoUrl(r.isin);
+          return ({
             instrumentKey: r.instrument_key,
             tradingSymbol: r.trading_symbol,
             name: r.name ?? null,
+            shortName: instrumentDisplayName({
+              isin: r.isin,
+              shortName: r.short_name,
+              name: r.name,
+              tradingSymbol: r.trading_symbol,
+            }),
             exchange: r.exchange,
             segment: r.segment,
             instrumentType: r.instrument_type ?? null,
             isin: r.isin ?? null,
+            logoUrl,
+            logoSource: logoUrl ? "BRANDFETCH" as const : null,
+            logoUpdatedAt: logoUrl ? new Date() : null,
             exchangeToken: r.exchange_token ?? null,
             lotSize: r.lot_size ?? null,
             tickSize: r.tick_size ?? null,
@@ -85,7 +116,8 @@ async function main() {
             assetSymbol: r.asset_symbol ?? null,
             weekly: r.weekly ?? null,
             updatedAt: new Date(),
-        }));
+          });
+        });
 
     console.log("Rows to import (after segment filter):", rows.length);
 
@@ -102,6 +134,7 @@ async function main() {
     }
 
     console.log("\nDone. Imported", inserted, "instruments.");
+    await pool.end();
     process.exit(0);
 }
 

@@ -6,6 +6,7 @@ export interface WatchInstrument {
   key: string;
   symbol: string;
   exchange: string;
+  logoUrl: string | null;
 }
 
 type WatchlistResponse = {

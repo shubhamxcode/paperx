@@ -30,6 +30,20 @@ type UpstoxApiErrorPayload = {
     errors?: Array<{ message?: string }>;
 };
 
+export type UpstoxInstrumentSearchItem = {
+    name?: string;
+    short_name?: string;
+    segment: string;
+    exchange: string;
+    isin?: string;
+    instrument_key: string;
+    exchange_token?: string;
+    trading_symbol: string;
+    tick_size?: number;
+    lot_size?: number;
+    instrument_type?: string;
+};
+
 /**
  * Upstox access tokens always expire daily at 03:30 AM IST (= 22:00 UTC the
  * previous day), regardless of when they were generated. There is no refresh
@@ -187,8 +201,7 @@ export class UpstoxClient {
      * Get market quotes for instruments
      */
     async getMarketQuotes(instrumentKeys: string[]): Promise<{ data: { [key: string]: MarketQuote } }> {
-        const params = new URLSearchParams();
-        instrumentKeys.forEach((key) => params.append("instrument_key", key));
+        const params = new URLSearchParams({ instrument_key: instrumentKeys.join(",") });
         return this.makeAuthenticatedRequest<{ data: { [key: string]: MarketQuote } }>(
             "GET",
             `/v2/market-quote/quotes?${params.toString()}`
@@ -199,8 +212,7 @@ export class UpstoxClient {
      */
 
     async getOHLC(instrumentKeys: string[]): Promise<{ data: { [key: string]: OHLCQuote } }> {
-        const params = new URLSearchParams();
-        instrumentKeys.forEach((key) => params.append("instrument_key", key));
+        const params = new URLSearchParams({ instrument_key: instrumentKeys.join(",") });
 
         return this.makeAuthenticatedRequest<{ data: { [key: string]: OHLCQuote } }>(
             "GET",
@@ -212,12 +224,92 @@ export class UpstoxClient {
      * Get LTP (Last Traded Price) for instruments
      */
     async getLTP(instrumentKeys: string[]): Promise<{ data: { [key: string]: LTPQuote } }> {
-        const params = new URLSearchParams();
-        instrumentKeys.forEach((key) => params.append("instrument_key", key));
+        const params = new URLSearchParams({ instrument_key: instrumentKeys.join(",") });
 
         return this.makeAuthenticatedRequest<{ data: { [key: string]: LTPQuote } }>(
             "GET",
-            `/v2/market-quote/ltp?${params.toString()}`
+            `/v3/market-quote/ltp?${params.toString()}`
+        );
+    }
+
+    /** Search Upstox's current instrument universe (fresh BOD-backed data). */
+    async searchInstruments(query: string): Promise<{ data: UpstoxInstrumentSearchItem[] }> {
+        const params = new URLSearchParams({
+            query,
+            exchanges: "NSE,BSE",
+            segments: "EQ,INDEX",
+            page_number: "1",
+            records: "30",
+        });
+        return this.makeAuthenticatedRequest<{ data: UpstoxInstrumentSearchItem[] }>(
+            "GET",
+            `/v2/instruments/search?${params.toString()}`
+        );
+    }
+
+    async getHistoricalCandles(params: {
+        instrumentKey: string;
+        unit: "minutes" | "hours" | "days" | "weeks" | "months";
+        interval: number;
+        toDate: string;
+        fromDate: string;
+    }): Promise<{ data: { candles: Array<[string, number, number, number, number, number, number]> } }> {
+        const key = encodeURIComponent(params.instrumentKey);
+        return this.makeAuthenticatedRequest(
+            "GET",
+            `/v3/historical-candle/${key}/${params.unit}/${params.interval}/${params.toDate}/${params.fromDate}`
+        );
+    }
+
+    async getIntradayCandles(params: {
+        instrumentKey: string;
+        unit: "minutes" | "hours" | "days";
+        interval: number;
+    }): Promise<{ data: { candles: Array<[string, number, number, number, number, number, number]> } }> {
+        const key = encodeURIComponent(params.instrumentKey);
+        return this.makeAuthenticatedRequest(
+            "GET",
+            `/v3/historical-candle/intraday/${key}/${params.unit}/${params.interval}`
+        );
+    }
+
+    async getCompanyProfile(isin: string): Promise<{
+        data: {
+            company_profile: string;
+            sector: string;
+            sector_market_cap_inr?: { value: number; unit: string; formatted: string };
+        };
+    }> {
+        return this.makeAuthenticatedRequest("GET", `/v2/fundamentals/${encodeURIComponent(isin)}/profile`);
+    }
+
+    async getKeyRatios(isin: string): Promise<{
+        data: Array<{ name: string; company_value: string; sector_value: string }>;
+    }> {
+        return this.makeAuthenticatedRequest("GET", `/v2/fundamentals/${encodeURIComponent(isin)}/key-ratios`);
+    }
+
+    async getIncomeStatement(
+        isin: string,
+        timePeriod: "quarterly" | "yearly"
+    ): Promise<{
+        data: {
+            type: string;
+            time_period: string;
+            units_in: string;
+            income_statement: Array<{
+                category: "revenue" | "operating_profit" | "net_profit";
+                history: Array<{ value: number; period: string; change?: string }>;
+            }>;
+        };
+    }> {
+        const query = new URLSearchParams({
+            type: "consolidated",
+            time_period: timePeriod,
+        });
+        return this.makeAuthenticatedRequest(
+            "GET",
+            `/v2/fundamentals/${encodeURIComponent(isin)}/income-statement?${query.toString()}`
         );
     }
 

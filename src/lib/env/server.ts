@@ -50,6 +50,17 @@ function webOrigin(name: string): string {
   return url.origin;
 }
 
+function optionalWebOrigin(name: string, fallback: string): string {
+  const value = process.env[name]?.trim() || fallback;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:" || url.pathname !== "/") throw new Error();
+    return url.origin;
+  } catch {
+    throw new Error(`${name} must be a valid HTTPS origin without a path`);
+  }
+}
+
 export const serverEnv = {
   get databaseUrl() {
     return databaseUrl();
@@ -81,6 +92,16 @@ export const serverEnv = {
   },
   get upstoxApiBaseUrl() {
     return webOrigin("UPSTOX_API_BASE_URL");
+  },
+  get brandfetchClientId() {
+    const clientId = required("BRANDFETCH_CLIENT_ID");
+    if (!/^[A-Za-z0-9_-]{6,128}$/.test(clientId)) {
+      throw new Error("BRANDFETCH_CLIENT_ID has an invalid format");
+    }
+    return clientId;
+  },
+  get brandfetchLogoBaseUrl() {
+    return optionalWebOrigin("BRANDFETCH_LOGO_BASE_URL", "https://cdn.brandfetch.io");
   },
   get secureCookies() {
     return new URL(this.nextAuthUrl).protocol === "https:";

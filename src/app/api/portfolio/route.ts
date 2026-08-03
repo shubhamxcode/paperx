@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { db } from "@/db";
 import { holdings, instruments, STARTING_BALANCE_PAISE } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { UpstoxClient, UpstoxAuthError } from "@/lib/upstox/client";
 import { ensureWallet } from "@/lib/trading/engine";
 
@@ -30,9 +30,10 @@ export async function GET() {
         avgPricePaise: holdings.avgPricePaise,
         updatedAt: holdings.updatedAt,
         tradingSymbol: instruments.tradingSymbol,
-        name: instruments.name,
+        name: sql<string | null>`coalesce(${instruments.shortName}, ${instruments.name})`,
         exchange: instruments.exchange,
         segment: instruments.segment,
+        logoUrl: instruments.logoUrl,
       })
       .from(holdings)
       .innerJoin(instruments, eq(holdings.instrumentKey, instruments.instrumentKey))
@@ -47,8 +48,9 @@ export async function GET() {
         const res = await client.getLTP(rows.map((r) => r.instrumentKey));
         prices = {};
         for (const quote of Object.values(res.data ?? {})) {
-          if (quote.instrument_key) {
-            prices[quote.instrument_key] = Math.round(quote.last_price * 100);
+          const instrumentKey = quote.instrument_token || quote.instrument_key;
+          if (instrumentKey && Number.isFinite(quote.last_price)) {
+            prices[instrumentKey] = Math.round(quote.last_price * 100);
           }
         }
       } catch (error) {

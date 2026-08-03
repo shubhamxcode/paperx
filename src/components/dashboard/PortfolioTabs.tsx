@@ -1,16 +1,21 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import {
     ArrowDownLeft,
     ArrowUpRight,
     BriefcaseBusiness,
     CircleAlert,
     Clock3,
+    ExternalLink,
     RefreshCw,
+    Wifi,
     WalletCards,
 } from "lucide-react";
 import type { DashboardTab } from "./DashboardNav";
+import { StockLogo } from "@/components/StockLogo";
+import { sharedUpstoxMarketFeed } from "@/lib/upstox/market-feed";
 
 interface Holding {
     instrumentKey: string;
@@ -19,6 +24,7 @@ interface Holding {
     tradingSymbol: string;
     name: string | null;
     exchange: string;
+    logoUrl: string | null;
     investedPaise: number;
     ltpPaise: number | null;
     currentPaise: number | null;
@@ -41,6 +47,7 @@ interface Portfolio {
 
 interface Order {
     id: string;
+    instrumentKey: string;
     side: "BUY" | "SELL";
     quantity: number;
     pricePaise: number;
@@ -51,6 +58,7 @@ interface Order {
     tradingSymbol: string;
     name: string | null;
     exchange: string;
+    logoUrl: string | null;
 }
 
 const money = (paise: number | null) =>
@@ -118,6 +126,75 @@ export function PortfolioTabs({ tab }: { tab: Exclude<DashboardTab, "Explore" | 
     useEffect(() => {
         void load();
     }, [load]);
+
+    const holdingKeys = portfolio?.holdings
+        .map((holding) => holding.instrumentKey)
+        .sort()
+        .join(",") ?? "";
+
+    // Keep every holding valued from the one shared browser-session Upstox
+    // socket. REST supplies the initial snapshot; LTPC ticks update it live.
+    useEffect(() => {
+        if (tab !== "Holdings" || !holdingKeys) return;
+        const instrumentKeys = holdingKeys.split(",");
+        const cleanups = instrumentKeys.map((instrumentKey) =>
+            sharedUpstoxMarketFeed.subscribe(instrumentKey, "ltpc", (update) => {
+                if (update.lastPrice == null || !Number.isFinite(update.lastPrice)) return;
+                const ltpPaise = Math.round(update.lastPrice * 100);
+                setPortfolio((current) => {
+                    if (!current) return current;
+                    const holdingIndex = current.holdings.findIndex(
+                        (holding) => holding.instrumentKey === instrumentKey
+                    );
+                    if (holdingIndex < 0 || current.holdings[holdingIndex].ltpPaise === ltpPaise) {
+                        return current;
+                    }
+
+                    const holdings = current.holdings.map((holding, index) => {
+                        if (index !== holdingIndex) return holding;
+                        const currentPaise = ltpPaise * holding.quantity;
+                        const pnlPaise = currentPaise - holding.investedPaise;
+                        return {
+                            ...holding,
+                            ltpPaise,
+                            currentPaise,
+                            pnlPaise,
+                            pnlPercent: holding.investedPaise > 0
+                                ? (pnlPaise / holding.investedPaise) * 100
+                                : null,
+                        };
+                    });
+
+                    const livePrices = holdings.every((holding) => holding.currentPaise !== null);
+                    const currentPaise = livePrices
+                        ? holdings.reduce((sum, holding) => sum + (holding.currentPaise ?? 0), 0)
+                        : null;
+                    const pnlPaise = currentPaise === null
+                        ? null
+                        : currentPaise - current.totals.investedPaise;
+                    const accountValuePaise = currentPaise === null
+                        ? null
+                        : current.wallet.balancePaise + currentPaise;
+
+                    return {
+                        ...current,
+                        holdings,
+                        livePrices,
+                        totals: {
+                            ...current.totals,
+                            currentPaise,
+                            pnlPaise,
+                            accountValuePaise,
+                            netPnlPaise: accountValuePaise === null
+                                ? null
+                                : accountValuePaise - current.wallet.startingBalancePaise,
+                        },
+                    };
+                });
+            })
+        );
+        return () => cleanups.forEach((cleanup) => cleanup());
+    }, [holdingKeys, tab]);
 
     if (loading) {
         return (
@@ -189,10 +266,13 @@ export function PortfolioTabs({ tab }: { tab: Exclude<DashboardTab, "Explore" | 
                             </thead>
                             <tbody className="divide-y divide-white/[0.07]">
                                 {orders.map((order) => (
-                                    <tr key={order.id} className="transition-colors hover:bg-white/[0.025]">
+                                    <tr key={order.id} className="group transition-colors hover:bg-white/[0.025]">
                                         <td className="px-6 py-4">
-                                            <p className="font-semibold text-white">{order.tradingSymbol}</p>
-                                            <p className="mt-0.5 text-xs text-slate-500">{order.exchange} · {new Date(order.createdAt).toLocaleString("en-IN")}</p>
+                                            <Link href={`/stocks/${encodeURIComponent(order.instrumentKey)}`} className="flex items-center gap-3 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/70" aria-label={`Open ${order.name || order.tradingSymbol} chart`}>
+                                                <StockLogo symbol={order.tradingSymbol} logoUrl={order.logoUrl} size={36} />
+                                                <div className="min-w-0"><p className="flex items-center gap-1.5 font-semibold text-white">{order.tradingSymbol}<ExternalLink className="h-3 w-3 text-slate-600 opacity-0 transition-opacity group-hover:opacity-100" /></p>
+                                                <p className="mt-0.5 truncate text-xs text-slate-500">{order.name || order.exchange} · {new Date(order.createdAt).toLocaleString("en-IN")}</p></div>
+                                            </Link>
                                         </td>
                                         <td className="px-4 py-4">
                                             <span className={order.side === "BUY" ? "text-emerald-400" : "text-red-400"}>
@@ -223,16 +303,18 @@ export function PortfolioTabs({ tab }: { tab: Exclude<DashboardTab, "Explore" | 
 
     return (
         <div className="space-y-5">
-            <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
                 {[
                     ["Available cash", money(portfolio?.wallet.balancePaise ?? null)],
                     ["Invested", money(portfolio?.totals.investedPaise ?? null)],
                     ["Current value", money(portfolio?.totals.currentPaise ?? null)],
-                    ["Total P&L", money(totalPnl)],
+                    ["Portfolio P&L", money(totalPnl)],
+                    ["Account value", money(portfolio?.totals.accountValuePaise ?? null)],
+                    ["Net P&L", money(portfolio?.totals.netPnlPaise ?? null)],
                 ].map(([label, value], index) => (
                     <div key={label} className="rounded-xl border border-white/10 bg-[#0b0d10] p-4">
                         <p className="text-xs text-slate-500">{label}</p>
-                        <p className={`mt-2 text-lg font-semibold ${index === 3 && totalPnl !== null ? (totalPnl >= 0 ? "text-emerald-400" : "text-red-400") : "text-white"}`}>
+                        <p className={`mt-2 text-lg font-semibold ${index === 3 && totalPnl !== null ? (totalPnl >= 0 ? "text-emerald-400" : "text-red-400") : index === 5 && portfolio?.totals.netPnlPaise != null ? (portfolio.totals.netPnlPaise >= 0 ? "text-emerald-400" : "text-red-400") : "text-white"}`}>
                             {value}
                         </p>
                     </div>
@@ -242,7 +324,10 @@ export function PortfolioTabs({ tab }: { tab: Exclude<DashboardTab, "Explore" | 
                 <div className="flex items-center justify-between border-b border-white/10 px-5 py-4 sm:px-6">
                     <div>
                         <h2 className="text-base font-semibold normal-case tracking-normal text-white">Holdings</h2>
-                        <p className="mt-1 text-xs text-slate-500">{portfolio?.livePrices ? "Values use live Upstox prices" : "Live prices unavailable; showing cost basis"}</p>
+                        <p className={`mt-1 flex items-center gap-1.5 text-xs ${portfolio?.livePrices ? "text-emerald-400" : "text-slate-500"}`}>
+                            {portfolio?.livePrices && <Wifi className="h-3 w-3" aria-hidden="true" />}
+                            {portfolio?.livePrices ? "Live Upstox prices · updates automatically" : "Live prices unavailable; showing cost basis"}
+                        </p>
                     </div>
                     <button onClick={() => void load()} className="paperx-icon-button" aria-label="Refresh holdings">
                         <RefreshCw className="h-4 w-4" />
@@ -269,10 +354,13 @@ export function PortfolioTabs({ tab }: { tab: Exclude<DashboardTab, "Explore" | 
                             </thead>
                             <tbody className="divide-y divide-white/[0.07]">
                                 {holdings.map((holding) => (
-                                    <tr key={holding.instrumentKey} className="transition-colors hover:bg-white/[0.025]">
+                                    <tr key={holding.instrumentKey} className="group transition-colors hover:bg-white/[0.025]">
                                         <td className="px-6 py-4">
-                                            <p className="font-semibold text-white">{holding.tradingSymbol}</p>
-                                            <p className="mt-0.5 text-xs text-slate-500">{holding.name || holding.exchange}</p>
+                                            <Link href={`/stocks/${encodeURIComponent(holding.instrumentKey)}`} className="flex items-center gap-3 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/70" aria-label={`Open ${holding.name || holding.tradingSymbol} chart`}>
+                                                <StockLogo symbol={holding.tradingSymbol} logoUrl={holding.logoUrl} size={36} />
+                                                <div className="min-w-0"><p className="flex items-center gap-1.5 font-semibold text-white">{holding.tradingSymbol}<ExternalLink className="h-3 w-3 text-slate-600 opacity-0 transition-opacity group-hover:opacity-100" /></p>
+                                                <p className="mt-0.5 truncate text-xs text-slate-500">{holding.name || holding.exchange}</p></div>
+                                            </Link>
                                         </td>
                                         <td className="px-4 py-4 text-right text-slate-300">{holding.quantity}</td>
                                         <td className="px-4 py-4 text-right text-slate-300">{money(holding.avgPricePaise)}</td>

@@ -40,8 +40,12 @@ export interface OHLCQuote {
 }
 
 export interface LTPQuote {
-    instrument_key: string;
+    instrument_token: string;
+    instrument_key?: string;
     last_price: number;
+    ltq?: number;
+    volume?: number;
+    cp?: number;
 }
 
 export interface WebSocketFeed {
