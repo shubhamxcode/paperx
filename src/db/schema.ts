@@ -227,12 +227,92 @@ export const watchlistItems = pgTable(
   ]
 );
 
+// =============================================
+// AI Learning Tutor
+// Conversations are private and cascade with the user. The model can read
+// curated learning context, but no AI route has authority to mutate trades.
+// =============================================
+
+export const aiConversations = pgTable(
+  "ai_conversation",
+  {
+    id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+    userId: text("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    instrumentKey: text("instrumentKey").references(() => instruments.instrumentKey),
+    title: text("title").notNull().default("Stock learning session"),
+    createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [index("ai_conversation_user_updated_idx").on(t.userId, t.updatedAt)]
+);
+
+export const aiMessages = pgTable(
+  "ai_message",
+  {
+    id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+    conversationId: text("conversationId").notNull().references(() => aiConversations.id, { onDelete: "cascade" }),
+    role: text("role").$type<"USER" | "ASSISTANT">().notNull(),
+    content: text("content").notNull(),
+    createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [index("ai_message_conversation_created_idx").on(t.conversationId, t.createdAt)]
+);
+
+export const aiUsage = pgTable(
+  "ai_usage",
+  {
+    id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+    userId: text("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    feature: text("feature").$type<"CHAT" | "VISUAL_LESSON" | "QUIZ" | "TRADE_REVIEW">().notNull(),
+    model: text("model").notNull(),
+    inputTokens: integer("inputTokens").notNull().default(0),
+    outputTokens: integer("outputTokens").notNull().default(0),
+    latencyMs: integer("latencyMs").notNull().default(0),
+    outcome: text("outcome").$type<"SUCCESS" | "REFUSED" | "ERROR">().notNull(),
+    createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [index("ai_usage_user_created_idx").on(t.userId, t.createdAt)]
+);
+
+export const learningProgress = pgTable(
+  "learning_progress",
+  {
+    userId: text("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    concept: text("concept").notNull(),
+    attempts: integer("attempts").notNull().default(0),
+    correctAnswers: integer("correctAnswers").notNull().default(0),
+    mastery: integer("mastery").notNull().default(0),
+    updatedAt: timestamp("updatedAt", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.concept] })]
+);
+
+export const learningAttempts = pgTable(
+  "learning_attempt",
+  {
+    id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+    userId: text("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    instrumentKey: text("instrumentKey").references(() => instruments.instrumentKey),
+    concept: text("concept").notNull(),
+    question: text("question").notNull(),
+    selectedAnswer: integer("selectedAnswer").notNull(),
+    correctAnswer: integer("correctAnswer").notNull(),
+    correct: boolean("correct").notNull(),
+    explanation: text("explanation").notNull(),
+    createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [index("learning_attempt_user_created_idx").on(t.userId, t.createdAt)]
+);
+
 export type Wallet = typeof wallets.$inferSelect;
 export type UserSetting = typeof userSettings.$inferSelect;
 export type Holding = typeof holdings.$inferSelect;
 export type Order = typeof orders.$inferSelect;
 export type Watchlist = typeof watchlists.$inferSelect;
 export type WatchlistItem = typeof watchlistItems.$inferSelect;
+export type AiConversation = typeof aiConversations.$inferSelect;
+export type AiMessage = typeof aiMessages.$inferSelect;
+export type LearningProgress = typeof learningProgress.$inferSelect;
 
 export type Instrument = typeof instruments.$inferSelect;
 export type NewInstrument = typeof instruments.$inferInsert;

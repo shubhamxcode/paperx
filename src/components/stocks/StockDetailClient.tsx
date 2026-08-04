@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import {
@@ -21,7 +21,8 @@ import { StockLogo } from "@/components/StockLogo";
 import { UpstoxConnect } from "@/components/UpstoxConnect";
 import { useWatchlist } from "@/lib/useWatchlist";
 import { sharedUpstoxMarketFeed, type LiveMarketUpdate } from "@/lib/upstox/market-feed";
-import { StockChart, type Candle } from "./StockChart";
+import { AiTutorPanel } from "@/components/learning/AiTutorPanel";
+import { StockChart, type Candle, type LearningOverlay, type StockChartHandle } from "./StockChart";
 
 type Range = "1D" | "1W" | "1M" | "3M" | "1Y" | "5Y";
 type IntradayInterval = "1m" | "5m" | "15m" | "30m" | "1h";
@@ -289,6 +290,7 @@ function OrderTicket({ data, livePrice, onComplete }: { data: StockData; livePri
 }
 
 export function StockDetailClient({ instrumentKey }: { instrumentKey: string }) {
+  const chartRef = useRef<StockChartHandle>(null);
   const router = useRouter();
   const { data: session, status } = useSession();
   const [activeTab, setActiveTab] = useState<DashboardTab>("Explore");
@@ -302,6 +304,7 @@ export function StockDetailClient({ instrumentKey }: { instrumentKey: string }) 
   const [chartLoading, setChartLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [live, setLive] = useState<LiveMarketUpdate | null>(null);
+  const [learningOverlays, setLearningOverlays] = useState<LearningOverlay[]>([]);
   const { add, remove, has } = useWatchlist();
 
   const fetchDetail = useCallback(async (): Promise<StockData> => {
@@ -428,12 +431,21 @@ export function StockDetailClient({ instrumentKey }: { instrumentKey: string }) 
 
             <section className="py-6" aria-labelledby="price-chart-heading">
               <div className="flex flex-wrap items-center justify-between gap-4"><div><h2 id="price-chart-heading" className="text-lg font-semibold text-white">Price chart</h2><p className="mt-1 text-xs text-slate-500">Real Upstox OHLCV data · {range}{range === "1D" ? ` · ${intradayInterval} candles` : ""}</p></div><div className="flex flex-wrap items-center gap-2"><MarketSessionTimer/><button onClick={() => setChartType("line")} aria-label="Line chart" className={`paperx-icon-button ${chartType === "line" ? "border-cyan-400/40 bg-cyan-400/10 text-cyan-300" : ""}`}><ChartNoAxesCombined className="h-4 w-4"/></button><button onClick={() => setChartType("candles")} aria-label="Candlestick chart" className={`paperx-icon-button ${chartType === "candles" ? "border-cyan-400/40 bg-cyan-400/10 text-cyan-300" : ""}`}><CandlestickChart className="h-4 w-4"/></button></div></div>
-              <div className="mt-4 overflow-hidden rounded-xl border border-white/10 bg-[#0b0d10]">{chartLoading ? <div className="flex h-[430px] items-center justify-center text-sm text-slate-500"><LoaderCircle className="mr-2 h-4 w-4 animate-spin"/>Loading Upstox candles…</div> : candles.length ? <StockChart candles={candles} type={chartType}/> : <div className="flex h-[430px] items-center justify-center text-sm text-slate-500">No chart data is available for this range.</div>}</div>
+              <div className="mt-4 overflow-hidden rounded-xl border border-white/10 bg-[#0b0d10]">{chartLoading ? <div className="flex h-[430px] items-center justify-center text-sm text-slate-500"><LoaderCircle className="mr-2 h-4 w-4 animate-spin"/>Loading Upstox candles…</div> : candles.length ? <StockChart ref={chartRef} candles={candles} type={chartType} overlays={learningOverlays}/> : <div className="flex h-[430px] items-center justify-center text-sm text-slate-500">No chart data is available for this range.</div>}</div>
               <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
                 <div className="flex gap-1 overflow-x-auto" aria-label="Chart range">{RANGES.map((item) => <button key={item} onClick={() => { setChartLoading(true); setRange(item); }} className={`min-w-12 rounded-lg px-3 py-2 text-xs transition-colors ${range === item ? "bg-cyan-400/10 text-cyan-300" : "text-slate-500 hover:bg-white/5 hover:text-white"}`}>{item}</button>)}</div>
                 {range === "1D" && <div className="flex items-center gap-1 rounded-lg border border-white/10 bg-white/[0.02] p-1" aria-label="Candle interval"><span className="px-2 text-[11px] text-slate-500">Interval</span>{INTRADAY_INTERVALS.map((item) => <button key={item} onClick={() => { setChartLoading(true); setIntradayInterval(item); }} aria-pressed={intradayInterval === item} className={`min-w-9 rounded-md px-2 py-1.5 text-xs transition-colors ${intradayInterval === item ? "bg-white/10 text-white" : "text-slate-500 hover:text-white"}`}>{item}</button>)}</div>}
               </div>
             </section>
+
+            <AiTutorPanel
+              instrumentKey={instrumentKey}
+              symbol={data.instrument.tradingSymbol}
+              range={range}
+              interval={intradayInterval}
+              captureChartViews={() => chartRef.current?.captureTutorViews() ?? Promise.resolve([])}
+              onOverlays={setLearningOverlays}
+            />
 
             <section className="border-t border-white/10 py-8" aria-labelledby="overview-heading">
               <div className="flex items-center justify-between"><div><h2 id="overview-heading" className="text-lg font-semibold text-white">Overview</h2><p className="mt-1 text-sm text-slate-400">Market performance and company fundamentals</p></div><button onClick={() => void refreshDetail()} className="paperx-icon-button" aria-label="Refresh overview"><RefreshCw className="h-4 w-4"/></button></div>

@@ -103,6 +103,12 @@ export const serverEnv = {
   get brandfetchLogoBaseUrl() {
     return optionalWebOrigin("BRANDFETCH_LOGO_BASE_URL", "https://cdn.brandfetch.io");
   },
+  get geminiApiKey() {
+    return required("GOOGLE_GENERATIVE_AI_API_KEY");
+  },
+  get geminiModel() {
+    return process.env.GEMINI_MODEL?.trim() || "gemini-3.6-flash";
+  },
   get secureCookies() {
     return new URL(this.nextAuthUrl).protocol === "https:";
   },
