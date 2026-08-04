@@ -1,7 +1,7 @@
 "use client";
 
 import { signIn, useSession } from "next-auth/react";
-import { TrendingUp } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
@@ -38,8 +38,8 @@ export default function Login() {
       <div className="relative z-10 w-full max-w-md px-6">
         <div className="mb-8 text-center">
           <Link href="/" className="inline-flex items-center gap-2 mb-6 group">
-            <div className="p-2 rounded-lg bg-white/5 border border-white/10 group-hover:border-[#00d8ff]/50 transition-colors">
-              <TrendingUp className="h-6 w-6 text-[#00d8ff]" />
+            <div className="relative h-11 w-16 overflow-hidden rounded-lg border border-white/10 bg-white/5 transition-colors group-hover:border-[#00d8ff]/50">
+              <Image src="/PaperXLOGO.png" alt="PaperX" fill sizes="64px" className="object-cover" priority />
             </div>
             <span className="text-2xl font-bold text-white tracking-tight">PaperX</span>
           </Link>

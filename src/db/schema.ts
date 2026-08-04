@@ -1,5 +1,6 @@
 import {
   bigint,
+  bigserial,
   boolean,
   index,
   integer,
@@ -159,6 +160,31 @@ export const holdings = pgTable(
   (t) => [primaryKey({ columns: [t.userId, t.instrumentKey] })]
 );
 
+/** Individual delivery purchase lots used for FIFO sell accounting. */
+export const holdingLots = pgTable(
+  "holding_lot",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    userId: text("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    instrumentKey: text("instrumentKey")
+      .notNull()
+      .references(() => instruments.instrumentKey),
+    remainingQuantity: integer("remainingQuantity").notNull(),
+    pricePaise: bigint("pricePaise", { mode: "number" }).notNull(),
+    acquiredAt: timestamp("acquiredAt", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("holding_lot_fifo_idx").on(
+      t.userId,
+      t.instrumentKey,
+      t.acquiredAt,
+      t.id
+    ),
+  ]
+);
+
 export const orders = pgTable(
   "order",
   {
@@ -263,7 +289,7 @@ export const aiUsage = pgTable(
   {
     id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
     userId: text("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
-    feature: text("feature").$type<"CHAT" | "VISUAL_LESSON" | "QUIZ" | "TRADE_REVIEW">().notNull(),
+    feature: text("feature").$type<"SOUJI" | "CHAT" | "VISUAL_LESSON" | "QUIZ" | "TRADE_REVIEW">().notNull(),
     model: text("model").notNull(),
     inputTokens: integer("inputTokens").notNull().default(0),
     outputTokens: integer("outputTokens").notNull().default(0),

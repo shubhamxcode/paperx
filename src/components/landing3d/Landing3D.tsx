@@ -30,11 +30,11 @@ function Nav() {
       <nav className="mx-auto flex max-w-6xl items-center justify-between rounded-full border border-white/10 bg-black/40 px-5 py-3 backdrop-blur-md">
         <Link href="/" className="flex items-center gap-3 no-underline">
           <Image
-            src="/Logo.png"
+            src="/PaperXLOGO.png"
             alt="PaperX Logo"
             width={30}
             height={30}
-            className="rounded-full object-contain"
+            className="rounded-md object-cover"
           />
           <span className="text-lg font-extrabold tracking-tight text-white [font-family:var(--font-archivo)]">
             PaperX

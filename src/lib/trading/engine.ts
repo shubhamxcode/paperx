@@ -1,5 +1,6 @@
 import { db } from "@/db";
 import {
+  holdingLots,
   holdings,
   instruments,
   orders,
@@ -7,8 +8,17 @@ import {
   type Order,
   type Wallet,
 } from "@/db/schema";
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq, gt } from "drizzle-orm";
 import { UpstoxClient } from "@/lib/upstox/client";
+import {
+  calculateAveragePricePaise,
+  calculateSaleProceedsPaise,
+  consumeFifoLots,
+} from "@/lib/trading/calculations";
+import {
+  getScheduledMarketStatus,
+  MARKET_CLOSED_MESSAGE,
+} from "@/lib/trading/market-hours";
 
 /** Only cash equities are tradeable; indices are view-only market context. */
 const TRADEABLE_SEGMENTS = ["NSE_EQ", "BSE_EQ"];
@@ -50,10 +60,9 @@ export async function ensureWallet(userId: string): Promise<Wallet> {
 
 /** Fetch the live last-traded price for one instrument, in paise. */
 async function fetchLivePricePaise(
-  userId: string,
+  client: UpstoxClient,
   instrumentKey: string
 ): Promise<number> {
-  const client = new UpstoxClient(userId);
   const res = await client.getLTP([instrumentKey]);
   // Upstox keys the response by "EXCHANGE:SYMBOL", so match on instrument_key.
   const quotes = Object.values(res.data ?? {});
@@ -96,6 +105,7 @@ export async function executeMarketOrder(
     .select({
       instrumentKey: instruments.instrumentKey,
       segment: instruments.segment,
+      exchange: instruments.exchange,
       tradingSymbol: instruments.tradingSymbol,
     })
     .from(instruments)
@@ -110,10 +120,30 @@ export async function executeMarketOrder(
     );
   }
 
+  // Reject locally first and again immediately before entering the transaction,
+  // so an order cannot cross the 15:30 IST boundary while market data is fetched.
+  if (!getScheduledMarketStatus().open) {
+    throw new TradeValidationError(MARKET_CLOSED_MESSAGE);
+  }
+
+  const exchange = instrument.exchange === "BSE" ? "BSE" : "NSE";
+  const client = new UpstoxClient(userId);
+  const marketStatus = await client.getMarketStatus(exchange);
+  if (marketStatus.data.status !== "NORMAL_OPEN") {
+    throw new TradeValidationError(MARKET_CLOSED_MESSAGE);
+  }
+
   // Price is fetched before the transaction so we never hold row locks
   // across a network call.
-  const pricePaise = await fetchLivePricePaise(userId, instrumentKey);
-  const totalPaise = pricePaise * quantity;
+  const pricePaise = await fetchLivePricePaise(client, instrumentKey);
+  const totalPaise =
+    side === "SELL"
+      ? calculateSaleProceedsPaise(quantity, pricePaise)
+      : pricePaise * quantity;
+
+  if (!getScheduledMarketStatus().open) {
+    throw new TradeValidationError(MARKET_CLOSED_MESSAGE);
+  }
 
   await ensureWallet(userId);
 
@@ -132,18 +162,62 @@ export async function executeMarketOrder(
       return { order, balancePaise: wallet.balancePaise };
     };
 
+    const [holding] = await tx
+      .select()
+      .from(holdings)
+      .where(and(eq(holdings.userId, userId), eq(holdings.instrumentKey, instrumentKey)))
+      .for("update");
+
+    let lots = await tx
+      .select({
+        id: holdingLots.id,
+        remainingQuantity: holdingLots.remainingQuantity,
+        pricePaise: holdingLots.pricePaise,
+      })
+      .from(holdingLots)
+      .where(
+        and(
+          eq(holdingLots.userId, userId),
+          eq(holdingLots.instrumentKey, instrumentKey),
+          gt(holdingLots.remainingQuantity, 0)
+        )
+      )
+      .orderBy(asc(holdingLots.acquiredAt), asc(holdingLots.id))
+      .for("update");
+
+    // Existing accounts predate FIFO lots. Preserve their current cost basis as
+    // one synthetic oldest lot, then use exact purchase lots from this point on.
+    if (holding && lots.length === 0) {
+      const [legacyLot] = await tx
+        .insert(holdingLots)
+        .values({
+          userId,
+          instrumentKey,
+          remainingQuantity: holding.quantity,
+          pricePaise: holding.avgPricePaise,
+          acquiredAt: holding.updatedAt,
+        })
+        .returning({
+          id: holdingLots.id,
+          remainingQuantity: holdingLots.remainingQuantity,
+          pricePaise: holdingLots.pricePaise,
+        });
+      lots = [legacyLot];
+    }
+
+    if (
+      holding &&
+      lots.reduce((sum, lot) => sum + lot.remainingQuantity, 0) !== holding.quantity
+    ) {
+      throw new Error("Holding quantity does not match its FIFO purchase lots.");
+    }
+
     if (side === "BUY") {
       if (wallet.balancePaise < totalPaise) {
         return reject(
           `Insufficient funds: order needs ₹${(totalPaise / 100).toLocaleString("en-IN")} but wallet has ₹${(wallet.balancePaise / 100).toLocaleString("en-IN")}.`
         );
       }
-
-      const [holding] = await tx
-        .select()
-        .from(holdings)
-        .where(and(eq(holdings.userId, userId), eq(holdings.instrumentKey, instrumentKey)))
-        .for("update");
 
       const newBalance = wallet.balancePaise - totalPaise;
       await tx
@@ -153,8 +227,11 @@ export async function executeMarketOrder(
 
       if (holding) {
         const newQty = holding.quantity + quantity;
-        const newAvg = Math.round(
-          (holding.avgPricePaise * holding.quantity + totalPaise) / newQty
+        const newAvg = calculateAveragePricePaise(
+          holding.quantity,
+          holding.avgPricePaise,
+          quantity,
+          pricePaise
         );
         await tx
           .update(holdings)
@@ -166,6 +243,15 @@ export async function executeMarketOrder(
           .values({ userId, instrumentKey, quantity, avgPricePaise: pricePaise });
       }
 
+      await tx.insert(holdingLots).values({
+        userId,
+        instrumentKey,
+        remainingQuantity: quantity,
+        pricePaise,
+        // Set after row locks are acquired so concurrent orders retain true FIFO order.
+        acquiredAt: new Date(),
+      });
+
       const [order] = await tx
         .insert(orders)
         .values({ userId, instrumentKey, side, quantity, pricePaise, totalPaise, status: "FILLED" })
@@ -174,19 +260,26 @@ export async function executeMarketOrder(
     }
 
     // SELL
-    const [holding] = await tx
-      .select()
-      .from(holdings)
-      .where(and(eq(holdings.userId, userId), eq(holdings.instrumentKey, instrumentKey)))
-      .for("update");
-
     if (!holding || holding.quantity < quantity) {
       return reject(
         `Insufficient shares: you hold ${holding?.quantity ?? 0} ${instrument.tradingSymbol}, tried to sell ${quantity}.`
       );
     }
 
+    const fifo = consumeFifoLots(lots, quantity);
     const remaining = holding.quantity - quantity;
+    if (fifo.remainingQuantity !== remaining) {
+      throw new Error("FIFO result does not match the remaining holding quantity.");
+    }
+
+    for (const consumption of fifo.consumptions) {
+      if (consumption.consumedQuantity === 0) continue;
+      await tx
+        .update(holdingLots)
+        .set({ remainingQuantity: consumption.remainingQuantity })
+        .where(eq(holdingLots.id, consumption.id));
+    }
+
     if (remaining === 0) {
       await tx
         .delete(holdings)
@@ -194,7 +287,11 @@ export async function executeMarketOrder(
     } else {
       await tx
         .update(holdings)
-        .set({ quantity: remaining, updatedAt: new Date() })
+        .set({
+          quantity: remaining,
+          avgPricePaise: fifo.remainingAveragePricePaise!,
+          updatedAt: new Date(),
+        })
         .where(and(eq(holdings.userId, userId), eq(holdings.instrumentKey, instrumentKey)));
     }
 

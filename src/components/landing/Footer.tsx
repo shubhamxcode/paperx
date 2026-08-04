@@ -40,11 +40,11 @@ export const Footer = () => {
             }}
           >
             <Image
-              src="/Logo.png"
+              src="/PaperXLOGO.png"
               alt="PaperX Logo"
               width={32}
               height={32}
-              style={{ objectFit: "contain", filter: "invert(1)" }}
+              style={{ objectFit: "cover", borderRadius: "4px" }}
             />
             PaperX
           </div>

@@ -14,10 +14,12 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:ai": "tsx --test src/lib/ai/*.test.ts"
+    "test:ai": "tsx --test src/lib/ai/*.test.ts",
+    "test:trading": "tsx --test src/lib/trading/*.test.ts"
   },
   "dependencies": {
     "@ai-sdk/google": "^4.0.33",
+    "@ai-sdk/react": "^4.0.54",
     "@auth/drizzle-adapter": "^1.11.3",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.6.1",

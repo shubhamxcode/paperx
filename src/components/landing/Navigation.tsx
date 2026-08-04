@@ -43,11 +43,11 @@ export const Navigation = () => {
             }}
           >
             <Image
-              src="/Logo.png"
+              src="/PaperXLOGO.png"
               alt="PaperX Logo"
               width={32}
               height={32}
-              style={{ objectFit: "contain", borderRadius: "50%" }}
+              style={{ objectFit: "cover", borderRadius: "4px" }}
             />
             PaperX
           </div>

@@ -1,7 +1,7 @@
 import "server-only";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { instruments, orders } from "@/db/schema";
+import { instruments } from "@/db/schema";
 import { UpstoxClient } from "@/lib/upstox/client";
 import type { TutorRequest } from "@/lib/ai/schemas";
 
@@ -63,14 +63,6 @@ export async function buildTutorContext(userId: string, request: TutorRequest) {
     .sort((a, b) => a.time - b.time);
 
   const previousClose = quote?.last_price != null && quote.net_change != null ? quote.last_price - quote.net_change : null;
-  const selectedOrder = request.orderId
-    ? (await db.select().from(orders).where(and(
-        eq(orders.id, request.orderId),
-        eq(orders.userId, userId),
-        eq(orders.instrumentKey, request.instrumentKey),
-      )))[0] ?? null
-    : null;
-
   const context = {
     asOf: new Date().toISOString(),
     instrument: {
@@ -92,21 +84,20 @@ export async function buildTutorContext(userId: string, request: TutorRequest) {
       totalVolume: candles.reduce((sum, item) => sum + item.volume, 0),
       sampledCandles: sampleCandles(candles),
     },
+    liveVision: {
+      enabled: request.live,
+      frameCapturedAt: request.chartImages?.length ? new Date().toISOString() : null,
+      deepAnalysis: request.deepAnalysis,
+      note: request.live
+        ? "The learner enabled Souji Live. The attached chart frame is the freshest browser view; exact values still come from this server-side OHLCV snapshot."
+        : "Souji Live is off. Do not imply continuous visual awareness.",
+    },
     quote: quote ? {
       lastPrice: quote.last_price,
       previousClose,
       netChange: quote.net_change,
       volume: quote.volume,
       lastTradedTime: quote.last_traded_time,
-    } : null,
-    selectedPaperOrder: selectedOrder ? {
-      id: selectedOrder.id,
-      side: selectedOrder.side,
-      quantity: selectedOrder.quantity,
-      pricePaise: selectedOrder.pricePaise,
-      totalPaise: selectedOrder.totalPaise,
-      status: selectedOrder.status,
-      createdAt: selectedOrder.createdAt.toISOString(),
     } : null,
     boundaries: {
       educationalOnly: true,

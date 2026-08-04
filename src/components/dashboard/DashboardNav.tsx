@@ -1,7 +1,9 @@
 "use client";
 
 import { ReactNode, useEffect, useRef, useState } from "react";
-import { TrendingUp, Search, Bell, RefreshCw, LoaderCircle, X } from "lucide-react";
+import Image from "next/image";
+import Link from "next/link";
+import { Search, Bell, RefreshCw, LoaderCircle, X } from "lucide-react";
 import { ProfileMenu } from "./ProfileMenu";
 import { StockLogo } from "@/components/StockLogo";
 
@@ -144,12 +146,12 @@ export function DashboardNav({
             <div className="mx-auto max-w-7xl px-6">
                 {/* Row 1: brand + product links + search + icons */}
                 <div className="flex items-center gap-6 py-3">
-                    <div className="flex shrink-0 items-center gap-2">
-                        <div className="rounded-lg border border-white/10 bg-white/5 p-2">
-                            <TrendingUp className="h-5 w-5 text-[#00d8ff]" />
+                    <Link href="/dashboard" className="flex shrink-0 items-center gap-2 rounded-lg focus-visible:outline-none" aria-label="Go to Explore">
+                        <div className="relative h-9 w-12 overflow-hidden rounded-md border border-white/10 bg-white/5">
+                            <Image src="/PaperXLOGO.png" alt="PaperX" fill sizes="48px" className="object-cover" priority />
                         </div>
                         <span className="text-xl font-bold tracking-tight text-white">PaperX</span>
-                    </div>
+                    </Link>
 
                     <nav className="hidden items-center gap-6 md:flex">
                         {PRODUCT_LINKS.map((link, i) => (

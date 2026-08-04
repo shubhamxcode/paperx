@@ -20,6 +20,10 @@ const spaceMono = Space_Mono({
 export const metadata: Metadata = {
   title: "PaperX - Practice Trading Without Real Capital",
   description: "Master the markets with ₹10L virtual currency. Real-time data, architectural precision, zero financial exposure.",
+  icons: {
+    icon: "/PaperXLOGO.png",
+    apple: "/PaperXLOGO.png",
+  },
 };
 
 export default function RootLayout({

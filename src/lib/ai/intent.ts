@@ -16,8 +16,8 @@ export type TutorGuard = {
 const CASUAL_ONLY = /^(?:hi|hey|hello|hii+|hey there|good (?:morning|afternoon|evening)|how are you|what's up|thank(?:s| you)|bye)[!?.\s]*$/i;
 const STOCK_CONTEXT = /\b(?:this|current|open)\s+(?:stock|company|chart)|\b(?:stock|company|chart|candle|ohlc|today|price|volume|trend|support|resistance|high|low|buy|sell|holding|order|portfolio|p&l|profit|loss)\b/i;
 
-export function classifyTutorScope(input: Pick<TutorRequest, "mode" | "question">): TutorScope {
-  if (input.mode !== "CHAT") return "STOCK";
+export function classifyTutorScope(input: Pick<TutorRequest, "question" | "live" | "deepAnalysis">): TutorScope {
+  if (input.live || input.deepAnalysis) return "STOCK";
   if (CASUAL_ONLY.test(input.question.trim())) return "CASUAL";
   return STOCK_CONTEXT.test(input.question) ? "STOCK" : "GENERAL";
 }

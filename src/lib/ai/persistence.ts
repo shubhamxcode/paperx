@@ -1,7 +1,7 @@
 import "server-only";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { aiConversations, aiMessages, aiUsage, learningAttempts, learningProgress } from "@/db/schema";
+import { aiConversations, aiMessages, aiUsage } from "@/db/schema";
 
 export async function ensureConversation(userId: string, instrumentKey: string, conversationId?: string) {
   if (conversationId) {
@@ -16,31 +16,48 @@ export async function ensureConversation(userId: string, instrumentKey: string, 
   return created;
 }
 
-export async function saveTutorExchange(conversationId: string, question: string, answer: string) {
-  await db.transaction(async (tx) => {
-    await tx.insert(aiMessages).values([
-      { conversationId, role: "USER", content: question },
-      { conversationId, role: "ASSISTANT", content: answer },
-    ]);
-    await tx.update(aiConversations).set({ updatedAt: new Date(), title: question.slice(0, 80) }).where(eq(aiConversations.id, conversationId));
-  });
+export async function saveTutorMessage(
+  conversationId: string,
+  role: "USER" | "ASSISTANT",
+  content: string
+) {
+  const [message] = await db.insert(aiMessages).values({ conversationId, role, content }).returning();
+  await db.update(aiConversations).set({
+    updatedAt: new Date(),
+    ...(role === "USER" ? { title: content.slice(0, 80) } : {}),
+  }).where(eq(aiConversations.id, conversationId));
+  return message;
 }
 
-export async function getRecentConversationMessages(conversationId: string) {
-  const rows = await db.select({ role: aiMessages.role, content: aiMessages.content })
+export async function getConversationMessages(conversationId: string) {
+  const rows = await db.select({
+    id: aiMessages.id,
+    role: aiMessages.role,
+    content: aiMessages.content,
+    createdAt: aiMessages.createdAt,
+  })
     .from(aiMessages)
     .where(eq(aiMessages.conversationId, conversationId))
-    .orderBy(desc(aiMessages.createdAt))
-    .limit(12);
-  return rows.reverse().map((message) => ({
+    .orderBy(aiMessages.createdAt);
+  return rows.map((message) => ({
+    id: message.id,
     role: message.role === "USER" ? "user" as const : "assistant" as const,
     content: message.content,
+    createdAt: message.createdAt,
   }));
+}
+
+export async function getLatestConversation(userId: string, instrumentKey: string) {
+  const [conversation] = await db.select().from(aiConversations).where(and(
+    eq(aiConversations.userId, userId),
+    eq(aiConversations.instrumentKey, instrumentKey),
+  )).orderBy(desc(aiConversations.updatedAt)).limit(1);
+  return conversation ?? null;
 }
 
 export async function saveUsage(input: {
   userId: string;
-  feature: "CHAT" | "VISUAL_LESSON" | "QUIZ" | "TRADE_REVIEW";
+  feature: "SOUJI";
   model: string;
   inputTokens?: number;
   outputTokens?: number;
@@ -48,43 +65,4 @@ export async function saveUsage(input: {
   outcome: "SUCCESS" | "REFUSED" | "ERROR";
 }) {
   await db.insert(aiUsage).values({ ...input, inputTokens: input.inputTokens ?? 0, outputTokens: input.outputTokens ?? 0 });
-}
-
-export async function recordQuizAttempt(input: {
-  userId: string;
-  instrumentKey: string;
-  concept: string;
-  question: string;
-  selectedAnswer: number;
-  correctAnswer: number;
-  explanation: string;
-}) {
-  const correct = input.selectedAnswer === input.correctAnswer;
-  await db.transaction(async (tx) => {
-    await tx.insert(learningAttempts).values({ ...input, correct });
-    await tx.insert(learningProgress).values({
-      userId: input.userId,
-      concept: input.concept,
-      attempts: 1,
-      correctAnswers: correct ? 1 : 0,
-      mastery: correct ? 20 : 5,
-    }).onConflictDoUpdate({
-      target: [learningProgress.userId, learningProgress.concept],
-      set: {
-        attempts: sql`${learningProgress.attempts} + 1`,
-        correctAnswers: sql`${learningProgress.correctAnswers} + ${correct ? 1 : 0}`,
-        mastery: sql`LEAST(100, ${learningProgress.mastery} + ${correct ? 20 : 5})`,
-        updatedAt: new Date(),
-      },
-    });
-  });
-}
-
-export async function getLearningSummary(userId: string) {
-  const [progress, conversations] = await Promise.all([
-    db.select().from(learningProgress).where(eq(learningProgress.userId, userId)).orderBy(desc(learningProgress.updatedAt)).limit(12),
-    db.select({ id: aiConversations.id, title: aiConversations.title, instrumentKey: aiConversations.instrumentKey, updatedAt: aiConversations.updatedAt })
-      .from(aiConversations).where(eq(aiConversations.userId, userId)).orderBy(desc(aiConversations.updatedAt)).limit(8),
-  ]);
-  return { progress, conversations };
 }

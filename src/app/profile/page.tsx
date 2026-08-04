@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useEffect, useState } from "react";
 import { signOut, useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
@@ -18,7 +19,6 @@ import {
   Save,
   ShieldCheck,
   Trash2,
-  TrendingUp,
   WalletCards,
 } from "lucide-react";
 
@@ -231,7 +231,12 @@ export default function ProfilePage() {
           <Link href="/dashboard" className="flex items-center gap-3 text-sm text-slate-400 transition-colors hover:text-white">
             <ArrowLeft className="h-4 w-4" /> Back to dashboard
           </Link>
-          <div className="flex items-center gap-2 font-semibold text-white"><TrendingUp className="h-5 w-5 text-cyan-400" /> PaperX</div>
+          <div className="flex items-center gap-2 font-semibold text-white">
+            <span className="relative h-8 w-11 overflow-hidden rounded-md border border-white/10">
+              <Image src="/PaperXLOGO.png" alt="PaperX" fill sizes="44px" className="object-cover" />
+            </span>
+            PaperX
+          </div>
         </div>
       </header>
 

@@ -32,29 +32,18 @@ export type LearningOverlay = {
 };
 
 export type StockChartHandle = {
-  captureTutorViews: () => Promise<string[]>;
+  captureSoujiFrame: () => string | null;
 };
 
 export const StockChart = forwardRef<StockChartHandle, { candles: Candle[]; type: "candles" | "line"; overlays?: LearningOverlay[] }>(function StockChart({ candles, type, overlays = [] }, ref) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
-  const candleCountRef = useRef(0);
 
   useImperativeHandle(ref, () => ({
-    captureTutorViews: async () => {
+    captureSoujiFrame: () => {
       const chart = chartRef.current;
-      if (!chart) return [];
-      const waitForPaint = () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
-      const originalRange = chart.timeScale().getVisibleLogicalRange();
-      const fullView = chart.takeScreenshot(true, false).toDataURL("image/png");
-      if (candleCountRef.current <= 45 || !originalRange) return [fullView];
-
-      chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, candleCountRef.current - 45), to: candleCountRef.current + 2 });
-      await waitForPaint();
-      const recentCloseUp = chart.takeScreenshot(true, false).toDataURL("image/png");
-      chart.timeScale().setVisibleLogicalRange(originalRange);
-      await waitForPaint();
-      return [fullView, recentCloseUp];
+      if (!chart) return null;
+      return chart.takeScreenshot(true, false).toDataURL("image/jpeg", 0.82);
     },
   }), []);
 
@@ -82,7 +71,6 @@ export const StockChart = forwardRef<StockChartHandle, { candles: Candle[]; type
       },
     });
     chartRef.current = chart;
-    candleCountRef.current = candles.length;
 
     const ordered = candles.map((candle) => ({ ...candle, time: candle.time as UTCTimestamp }));
     const priceSeries = type === "candles"

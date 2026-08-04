@@ -3,14 +3,14 @@ import test from "node:test";
 import { classifyTutorScope, getTutorGuard, visibleChartInterval } from "./intent";
 
 test("routes greetings without loading market context", () => {
-  assert.equal(classifyTutorScope({ mode: "CHAT", question: "hey" }), "CASUAL");
-  assert.equal(classifyTutorScope({ mode: "CHAT", question: "How are you?" }), "CASUAL");
+  assert.equal(classifyTutorScope({ question: "hey", live: false, deepAnalysis: false }), "CASUAL");
+  assert.equal(classifyTutorScope({ question: "How are you?", live: false, deepAnalysis: false }), "CASUAL");
 });
 
 test("separates general learning from current-stock questions", () => {
-  assert.equal(classifyTutorScope({ mode: "CHAT", question: "What does diversification mean?" }), "GENERAL");
-  assert.equal(classifyTutorScope({ mode: "CHAT", question: "Explain today's candle and volume" }), "STOCK");
-  assert.equal(classifyTutorScope({ mode: "VISUAL_LESSON", question: "Teach me this" }), "STOCK");
+  assert.equal(classifyTutorScope({ question: "What does diversification mean?", live: false, deepAnalysis: false }), "GENERAL");
+  assert.equal(classifyTutorScope({ question: "Explain today's candle and volume", live: false, deepAnalysis: false }), "STOCK");
+  assert.equal(classifyTutorScope({ question: "Teach me this", live: true, deepAnalysis: false }), "STOCK");
 });
 
 test("stops analysis when the requested candle interval is not visible", () => {

@@ -232,6 +232,15 @@ export class UpstoxClient {
         );
     }
 
+    /** Current exchange session status, including holidays and special sessions. */
+    async getMarketStatus(exchange: "NSE" | "BSE"): Promise<{
+        data: { exchange: string; status: string; last_updated: number };
+    }> {
+        return this.makeAuthenticatedRequest<{
+            data: { exchange: string; status: string; last_updated: number };
+        }>("GET", `/v2/market/status/${exchange}`);
+    }
+
     /** Search Upstox's current instrument universe (fresh BOD-backed data). */
     async searchInstruments(query: string): Promise<{ data: UpstoxInstrumentSearchItem[] }> {
         const params = new URLSearchParams({

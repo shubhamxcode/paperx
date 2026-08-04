@@ -21,7 +21,8 @@ import { StockLogo } from "@/components/StockLogo";
 import { UpstoxConnect } from "@/components/UpstoxConnect";
 import { useWatchlist } from "@/lib/useWatchlist";
 import { sharedUpstoxMarketFeed, type LiveMarketUpdate } from "@/lib/upstox/market-feed";
-import { AiTutorPanel } from "@/components/learning/AiTutorPanel";
+import { getScheduledMarketStatus } from "@/lib/trading/market-hours";
+import { SoujiAssistant } from "@/components/souji/SoujiAssistant";
 import { StockChart, type Candle, type LearningOverlay, type StockChartHandle } from "./StockChart";
 
 type Range = "1D" | "1W" | "1M" | "3M" | "1Y" | "5Y";
@@ -93,40 +94,6 @@ function formatDuration(totalSeconds: number) {
   return hours > 0
     ? `${hours}h ${String(minutes).padStart(2, "0")}m ${String(seconds).padStart(2, "0")}s`
     : `${String(minutes).padStart(2, "0")}m ${String(seconds).padStart(2, "0")}s`;
-}
-
-function getScheduledMarketStatus(now: Date) {
-  const parts = new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Asia/Kolkata",
-    weekday: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(now);
-  const read = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value ?? "0";
-  const weekday = read("weekday");
-  const secondsNow = Number(read("hour")) * 3600 + Number(read("minute")) * 60 + Number(read("second"));
-  const marketOpen = 9 * 3600 + 15 * 60;
-  const marketClose = 15 * 3600 + 30 * 60;
-  const weekdayIndex = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(weekday);
-
-  if (weekdayIndex >= 1 && weekdayIndex <= 5 && secondsNow >= marketOpen && secondsNow < marketClose) {
-    return { open: true, label: "Market closes in", seconds: marketClose - secondsNow };
-  }
-
-  let daysUntilOpen = 0;
-  let targetDay = weekdayIndex;
-  if (weekdayIndex >= 1 && weekdayIndex <= 5 && secondsNow < marketOpen) {
-    daysUntilOpen = 0;
-  } else {
-    do {
-      daysUntilOpen += 1;
-      targetDay = (targetDay + 1) % 7;
-    } while (targetDay === 0 || targetDay === 6);
-  }
-  const seconds = daysUntilOpen * 86_400 + marketOpen - secondsNow;
-  return { open: false, label: "Next scheduled open in", seconds };
 }
 
 function MarketSessionTimer() {
@@ -220,12 +187,21 @@ function OrderTicket({ data, livePrice, onComplete }: { data: StockData; livePri
   const [side, setSide] = useState<"BUY" | "SELL">("BUY");
   const [quantity, setQuantity] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [marketNow, setMarketNow] = useState(() => new Date());
+  useEffect(() => {
+    const timer = window.setInterval(() => setMarketNow(new Date()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const marketStatus = getScheduledMarketStatus(marketNow);
   const qty = Number(quantity);
   const total = Number.isInteger(qty) && qty > 0 && livePrice ? qty * livePrice : 0;
 
   const submit = async () => {
     if (!Number.isInteger(qty) || qty <= 0) return toast.error("Enter a valid whole-number quantity");
     if (!data.tradeable) return toast.error("This instrument is view-only");
+    if (!getScheduledMarketStatus().open) {
+      return toast.error("Market is closed. You cannot buy or sell after market close or before market open.");
+    }
     setSubmitting(true);
     try {
       const response = await fetch("/api/trade/order", {
@@ -279,7 +255,13 @@ function OrderTicket({ data, livePrice, onComplete }: { data: StockData; livePri
             <div className="flex justify-between text-slate-500"><span>Virtual balance</span><span>{paise(data.wallet.balancePaise)}</span></div>
             <div className="flex justify-between text-slate-500"><span>Approx. order value</span><span>{money(total)}</span></div>
           </div>
-          <button disabled={submitting || !data.tradeable || !livePrice} onClick={() => void submit()} className={`flex h-11 w-full items-center justify-center rounded-lg text-sm font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${side === "BUY" ? "bg-emerald-500 hover:bg-emerald-400" : "bg-red-500 hover:bg-red-400"}`}>
+          {!marketStatus.open && (
+            <div className="flex gap-2 rounded-lg border border-amber-400/20 bg-amber-400/[0.07] p-3 text-xs leading-relaxed text-amber-200">
+              <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+              <p>Market is closed. You cannot buy or sell after market close or before market open.</p>
+            </div>
+          )}
+          <button disabled={submitting || !data.tradeable || !livePrice || !marketStatus.open} onClick={() => void submit()} className={`flex h-11 w-full items-center justify-center rounded-lg text-sm font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${side === "BUY" ? "bg-emerald-500 hover:bg-emerald-400" : "bg-red-500 hover:bg-red-400"}`}>
             {submitting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : `${side === "BUY" ? "Buy" : "Sell"} with virtual funds`}
           </button>
           <p className="text-center text-[11px] leading-relaxed text-slate-600">Execution uses a fresh server-side Upstox price. No real order is sent.</p>
@@ -438,15 +420,6 @@ export function StockDetailClient({ instrumentKey }: { instrumentKey: string }) 
               </div>
             </section>
 
-            <AiTutorPanel
-              instrumentKey={instrumentKey}
-              symbol={data.instrument.tradingSymbol}
-              range={range}
-              interval={intradayInterval}
-              captureChartViews={() => chartRef.current?.captureTutorViews() ?? Promise.resolve([])}
-              onOverlays={setLearningOverlays}
-            />
-
             <section className="border-t border-white/10 py-8" aria-labelledby="overview-heading">
               <div className="flex items-center justify-between"><div><h2 id="overview-heading" className="text-lg font-semibold text-white">Overview</h2><p className="mt-1 text-sm text-slate-400">Market performance and company fundamentals</p></div><button onClick={() => void refreshDetail()} className="paperx-icon-button" aria-label="Refresh overview"><RefreshCw className="h-4 w-4"/></button></div>
               <div className="mt-6">
@@ -456,6 +429,14 @@ export function StockDetailClient({ instrumentKey }: { instrumentKey: string }) 
               </div>
               <div className="mt-9 border-t border-white/10 pt-7"><h3 className="text-base font-semibold text-white">Fundamentals</h3><p className="mt-1 text-xs text-slate-500">Current company value with Upstox sector benchmark</p><div className="mt-5 grid gap-x-8 gap-y-4 sm:grid-cols-2">{["P/E","P/B","ROA","ROE","ROCE","EV/EBITDA"].map((name) => { const ratio=ratios.get(name); return <div key={name} className="flex items-center justify-between border-b border-white/[0.07] py-2.5 text-sm"><span className="text-slate-400">{name}</span><span className="text-right font-medium text-white">{ratio?.company_value ?? "—"}<small className="ml-2 font-normal text-slate-600">Sector {ratio?.sector_value ?? "—"}</small></span></div>; })}</div></div>
             </section>
+            <SoujiAssistant
+              instrumentKey={instrumentKey}
+              symbol={data.instrument.tradingSymbol}
+              range={range}
+              interval={intradayInterval}
+              captureChartFrame={() => chartRef.current?.captureSoujiFrame() ?? null}
+              onOverlays={setLearningOverlays}
+            />
 
             <FinancialPerformance quarterly={data.income.quarterly} yearly={data.income.yearly}/>
 

@@ -3,7 +3,13 @@ import { getServerSession } from "next-auth";
 import { eq } from "drizzle-orm";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { db } from "@/db";
-import { holdings, orders, STARTING_BALANCE_PAISE, wallets } from "@/db/schema";
+import {
+  holdingLots,
+  holdings,
+  orders,
+  STARTING_BALANCE_PAISE,
+  wallets,
+} from "@/db/schema";
 import { ensureWallet } from "@/lib/trading/engine";
 
 export async function POST(request: NextRequest) {
@@ -29,6 +35,7 @@ export async function POST(request: NextRequest) {
         .from(wallets)
         .where(eq(wallets.userId, userId))
         .for("update");
+      await tx.delete(holdingLots).where(eq(holdingLots.userId, userId));
       await tx.delete(holdings).where(eq(holdings.userId, userId));
       await tx.delete(orders).where(eq(orders.userId, userId));
       await tx
