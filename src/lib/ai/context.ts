@@ -4,8 +4,7 @@ import { db } from "@/db";
 import { instruments } from "@/db/schema";
 import { UpstoxClient } from "@/lib/upstox/client";
 import type { TutorRequest } from "@/lib/ai/schemas";
-
-type TutorCandle = { time: number; open: number; high: number; low: number; close: number; volume: number };
+import { prepareCandlesForAi } from "@/lib/ai/candle-context";
 
 const RANGE_CONFIG = {
   "1D": { days: 0, unit: "minutes", interval: 5, intraday: true },
@@ -26,12 +25,6 @@ const INTRADAY = {
 
 function isoDate(date: Date) {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
-}
-
-function sampleCandles(candles: TutorCandle[], limit = 48) {
-  if (candles.length <= limit) return candles;
-  const step = (candles.length - 1) / (limit - 1);
-  return Array.from({ length: limit }, (_, index) => candles[Math.round(index * step)]);
 }
 
 export async function buildTutorContext(userId: string, request: TutorRequest) {
@@ -63,6 +56,7 @@ export async function buildTutorContext(userId: string, request: TutorRequest) {
     .sort((a, b) => a.time - b.time);
 
   const previousClose = quote?.last_price != null && quote.net_change != null ? quote.last_price - quote.net_change : null;
+  const modelCandles = prepareCandlesForAi(candles);
   const context = {
     asOf: new Date().toISOString(),
     instrument: {
@@ -82,7 +76,12 @@ export async function buildTutorContext(userId: string, request: TutorRequest) {
       high: candles.length ? Math.max(...candles.map((item) => item.high)) : null,
       low: candles.length ? Math.min(...candles.map((item) => item.low)) : null,
       totalVolume: candles.reduce((sum, item) => sum + item.volume, 0),
-      sampledCandles: sampleCandles(candles),
+      ohlcv: {
+        order: "oldest-to-newest",
+        includedCount: modelCandles.candles.length,
+        complete: modelCandles.complete,
+        candles: modelCandles.candles,
+      },
     },
     liveVision: {
       enabled: request.live,

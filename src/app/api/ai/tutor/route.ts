@@ -111,7 +111,7 @@ export async function POST(request: Request) {
     const history = await getConversationMessages(conversation.id);
     await saveTutorMessage(conversation.id, "USER", input.question);
     const visionNote = input.chartImages?.length
-      ? `\n\nLIVE CHART FRAME\nThe attached image is the newest PaperX chart frame.${input.deepAnalysis ? " Perform a thorough visual and OHLCV analysis." : ""} Use pixels for visual structure and supplied OHLCV for exact values. If they disagree, trust OHLCV and state the limitation.`
+      ? `\n\nVISIBLE CHART FRAME\nThe attached image is the learner's newest visible PaperX chart viewport, so horizontally hidden candles may not appear in it.${input.deepAnalysis ? " Perform a thorough visual and OHLCV analysis." : ""} Analyze chart.ohlcv for the whole selected range and use the image for visible structure. If they disagree, trust OHLCV and state the limitation.`
       : "\n\nLIVE CHART FRAME\nNo frame was supplied. Do not claim to see the chart.";
     const guardNote = guard ? `\n\nVISIBLE-CHART MISMATCH\n${guard.message}` : "";
     const currentRequest = `PAPERX CONTEXT\n${JSON.stringify(context)}${visionNote}${guardNote}\n\nCURRENT LEARNER REQUEST\n${input.question}`;
