@@ -32,3 +32,11 @@ test("requires adaptive, evidence-based beginner teaching", () => {
   assert.match(TUTOR_INSTRUCTIONS, /established general knowledge/);
   assert.match(TUTOR_INSTRUCTIONS, /drawChart/);
 });
+
+test("requires grounded scenario-based portfolio coaching", () => {
+  assert.match(TUTOR_INSTRUCTIONS, /integer paise/);
+  assert.match(TUTOR_INSTRUCTIONS, /priceCoverage/);
+  assert.match(TUTOR_INSTRUCTIONS, /empty portfolio/);
+  assert.match(TUTOR_INSTRUCTIONS, /risk tolerance/);
+  assert.match(TUTOR_INSTRUCTIONS, /add, hold, reduce and rebalance scenarios/);
+});

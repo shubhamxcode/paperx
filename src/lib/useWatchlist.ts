@@ -27,12 +27,18 @@ async function responseJson<T>(response: Response): Promise<T> {
  * Authenticated, database-backed default watchlist.
  * React state is only a UI cache; PostgreSQL remains the source of truth.
  */
-export function useWatchlist() {
+export function useWatchlist(enabled = true) {
   const [list, setList] = useState<WatchInstrument[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(enabled);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async (signal?: AbortSignal) => {
+    if (!enabled) {
+      setList([]);
+      setError(null);
+      setLoading(false);
+      return;
+    }
     try {
       const response = await fetch("/api/watchlists", {
         signal,
@@ -48,7 +54,7 @@ export function useWatchlist() {
     } finally {
       if (!signal?.aborted) setLoading(false);
     }
-  }, []);
+  }, [enabled]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -62,6 +68,7 @@ export function useWatchlist() {
   }, [load]);
 
   const add = useCallback(async (item: WatchInstrument) => {
+    if (!enabled) throw new Error("Sign in to use a watchlist");
     if (list.some((entry) => entry.key === item.key)) return;
     setList((current) => [...current, item]);
 
@@ -86,9 +93,10 @@ export function useWatchlist() {
       setError(message);
       throw cause;
     }
-  }, [list]);
+  }, [enabled, list]);
 
   const remove = useCallback(async (key: string) => {
+    if (!enabled) throw new Error("Sign in to use a watchlist");
     const removedIndex = list.findIndex((entry) => entry.key === key);
     const removed = list[removedIndex];
     if (!removed) return;
@@ -114,9 +122,10 @@ export function useWatchlist() {
       setError(message);
       throw cause;
     }
-  }, [list]);
+  }, [enabled, list]);
 
   const reorder = useCallback(async (nextList: WatchInstrument[]) => {
+    if (!enabled) throw new Error("Sign in to use a watchlist");
     if (
       nextList.length !== list.length ||
       nextList.some((item) => !list.some((current) => current.key === item.key))
@@ -141,7 +150,7 @@ export function useWatchlist() {
       setError(message);
       throw cause;
     }
-  }, [list]);
+  }, [enabled, list]);
 
   const keys = useMemo(() => new Set(list.map((item) => item.key)), [list]);
   const has = useCallback((key: string) => keys.has(key), [keys]);

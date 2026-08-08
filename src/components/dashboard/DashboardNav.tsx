@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { Search, Bell, RefreshCw, LoaderCircle, X } from "lucide-react";
+import { Search, Bell, LogIn, RefreshCw, LoaderCircle, X } from "lucide-react";
 import { ProfileMenu } from "./ProfileMenu";
 import { StockLogo } from "@/components/StockLogo";
 
@@ -13,6 +13,7 @@ const TABS: DashboardTab[] = ["Explore", "Holdings", "Positions", "Orders", "Wat
 const PRODUCT_LINKS = ["Stocks"];
 
 interface DashboardNavProps {
+    authenticated: boolean;
     userName?: string | null;
     userEmail?: string | null;
     userImage?: string | null;
@@ -31,6 +32,7 @@ export interface InstrumentSearchResult {
 }
 
 export function DashboardNav({
+    authenticated,
     userName,
     userEmail,
     userImage,
@@ -164,7 +166,7 @@ export function DashboardNav({
                         ))}
                     </nav>
 
-                    {/* Authenticated global instrument search */}
+                    {/* Public global instrument search */}
                     <div ref={searchRef} className="relative ml-auto w-full max-w-md">
                         <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 transition-colors focus-within:border-[#00d8ff]/50">
                             {searching ? (
@@ -256,17 +258,29 @@ export function DashboardNav({
                         <button className="hidden rounded-lg p-2 text-gray-400 transition-colors hover:bg-white/5 hover:text-white sm:block">
                             <RefreshCw className="h-5 w-5" />
                         </button>
-                        <button className="hidden rounded-lg p-2 text-gray-400 transition-colors hover:bg-white/5 hover:text-white sm:block">
-                            <Bell className="h-5 w-5" />
-                        </button>
-                        <ProfileMenu name={userName} email={userEmail} image={userImage} />
+                        {authenticated ? (
+                            <>
+                                <button className="hidden rounded-lg p-2 text-gray-400 transition-colors hover:bg-white/5 hover:text-white sm:block">
+                                    <Bell className="h-5 w-5" />
+                                </button>
+                                <ProfileMenu name={userName} email={userEmail} image={userImage} />
+                            </>
+                        ) : (
+                            <Link
+                                href="/login?callbackUrl=%2Fdashboard"
+                                className="flex min-h-9 items-center gap-2 rounded-lg bg-cyan-300 px-3 text-sm font-semibold text-[#06242b] transition-colors hover:bg-cyan-200"
+                            >
+                                <LogIn className="h-4 w-4" />
+                                <span className="hidden sm:inline">Sign in</span>
+                            </Link>
+                        )}
                     </div>
                 </div>
 
                 {/* Row 2: tabs + terminal/code */}
                 <div className="flex items-center justify-between border-t border-white/5">
                     <nav className="flex items-center gap-5 overflow-x-auto sm:gap-6" aria-label="Portfolio sections">
-                        {TABS.map((tab) => {
+                        {(authenticated ? TABS : TABS.slice(0, 1)).map((tab) => {
                             const active = tab === activeTab;
                             return (
                                 <button

@@ -22,7 +22,7 @@ Long-term direction: real charts and live data, delivery/intraday practice, pend
 
 - Chunks 0–2 are complete: stable foundation, PostgreSQL watchlists, and authenticated profile/settings/account-safety flows.
 - The stock experience includes stable routes, real chart ranges and intraday intervals, shared batched price polling, company details, watchlist actions, and simulated BUY/SELL.
-- Souji is a durable, PostgreSQL-backed tutor with per-stock context, full selected-range OHLCV, deterministic technical summaries, visible-chart vision, and evidence-validated chart drawing.
+- Souji is a durable, PostgreSQL-backed tutor with isolated stock and portfolio conversations. Intent-aware context can load the current stock, the authenticated paper portfolio, or both; portfolio coaching uses deterministic allocation, concentration, P&L, cash, and data-coverage analytics.
 - Trading is restricted to scheduled/provider-confirmed market hours. Buys use weighted average cost; partial sells consume FIFO lots and credit live execution proceeds.
 - Existing Notion roadmap text may lag the implementation page; treat the code and the newest implementation note as the current truth.
 
@@ -56,16 +56,18 @@ Long-term direction: real charts and live data, delivery/intraday practice, pend
 - Wallet and holding changes plus order creation are atomic; wallet/holding rows are locked to prevent double-spend and overselling.
 - Watchlists, settings, wallet, holdings, and orders are PostgreSQL-backed, not localStorage-backed.
 - Missing market/provider data must show unavailable/stale/error UI—never invented values.
+- Market discovery, search, quotes, charts, fundamentals, and stock pages are public read-only experiences.
+- Google authentication is required for every personalized or mutating feature: Souji, watchlists, paper orders, portfolio, wallet, orders, and profile.
 
 ## Main user flows
 
-1. Google login creates/loads the NextAuth database identity and session.
-2. Authenticated PaperX users receive market data through server routes backed by one read-only Analytics token.
-3. Dashboard/search loads instrument and quote data; selecting a stock navigates to `/stocks/[instrumentKey]`.
-4. Stock detail loads local metadata plus server-side Upstox candles/quote/fundamentals.
+1. Any visitor can browse the dashboard, search instruments, and open public stock charts and fundamentals without signing in.
+2. PaperX market data comes through server routes backed by one read-only Analytics token.
+3. A personalized action sends an anonymous visitor to Google sign-in and then returns them to the page where they started.
+4. Google login creates/loads the NextAuth database identity and session.
 5. The shared polling manager batches required instruments, pauses in hidden tabs, and retries with capped backoff.
 6. Watchlist mutations use authenticated APIs with optimistic UI and rollback.
-7. Paper BUY/SELL validates the instrument, quantity, segment, live server price, funds/shares, then updates PostgreSQL atomically.
+7. Paper BUY/SELL requires authentication and open market hours, then validates the instrument, quantity, segment, fresh server price, funds/shares, and updates PostgreSQL atomically.
 
 ## Database model
 

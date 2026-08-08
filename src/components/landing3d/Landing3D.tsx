@@ -23,7 +23,7 @@ function Nav() {
   const accountLink =
     status === "authenticated"
       ? { href: "/dashboard", label: "Dashboard" }
-      : { href: "/login", label: "Login" };
+      : { href: "/dashboard", label: "Explore Market" };
 
   return (
     <div className="fixed inset-x-0 top-0 z-50 px-4 pt-4 sm:px-6">
@@ -293,10 +293,10 @@ export default function Landing3D() {
           </p>
           <div className="mt-8">
             <Link
-              href="/login"
+              href="/dashboard"
               className="inline-block rounded-full bg-emerald-400 px-8 py-4 text-sm font-bold uppercase tracking-[0.15em] text-[#04120c] no-underline shadow-[0_0_40px_rgba(52,211,153,0.35)] transition-all hover:bg-emerald-300 hover:shadow-[0_0_60px_rgba(52,211,153,0.55)]"
             >
-              Start Practicing Free
+              Explore the Market
             </Link>
           </div>
         </Chapter>
@@ -318,8 +318,8 @@ export default function Landing3D() {
             </div>
             <div data-reveal className="mt-12 grid gap-6 md:grid-cols-3">
               <GlassCard index="01" title="Live Market Data">
-                22,000+ instruments across NSE &amp; BSE stream in real time. The same
-                ticks real traders see — you just can&apos;t get hurt by them.
+                Explore 22,000+ NSE &amp; BSE instruments with frequently refreshed
+                market prices before creating an account.
               </GlassCard>
               <GlassCard index="02" title="₹10 Lakh Virtual Capital">
                 Place orders, build a portfolio and watch your P&amp;L move tick by tick.

@@ -7,6 +7,11 @@ import type { TutorRequest } from "@/lib/ai/schemas";
 import { prepareCandlesForAi } from "@/lib/ai/candle-context";
 import { buildTechnicalContext } from "@/lib/ai/technical-context";
 import {
+  tutorContextSelection,
+  type TutorScope,
+} from "@/lib/ai/intent";
+import { getPortfolioSnapshot } from "@/lib/portfolio/snapshot";
+import {
   marketDataCacheKey,
   withMarketDataCache,
 } from "@/lib/upstox/cache";
@@ -32,8 +37,13 @@ function isoDate(date: Date) {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
 }
 
-export async function buildTutorContext(userId: string, request: TutorRequest) {
-  const [instrument] = await db.select().from(instruments).where(eq(instruments.instrumentKey, request.instrumentKey));
+export async function buildCurrentStockContext(
+  userId: string,
+  request: TutorRequest
+) {
+  const instrumentKey = request.instrumentKey;
+  if (!instrumentKey) throw new Error("Stock context requires an instrument");
+  const [instrument] = await db.select().from(instruments).where(eq(instruments.instrumentKey, instrumentKey));
   if (!instrument) throw new Error("Instrument not found");
 
   const client = new UpstoxClient();
@@ -41,14 +51,14 @@ export async function buildTutorContext(userId: string, request: TutorRequest) {
   const intraday = INTRADAY[request.interval];
   const [quoteResult, candleResult, [holding], profileResult, ratiosResult] = await Promise.all([
     withMarketDataCache(
-      marketDataCacheKey("quotes", request.instrumentKey),
+      marketDataCacheKey("quotes", instrumentKey),
       3,
-      () => client.getMarketQuotes([request.instrumentKey])
+      () => client.getMarketQuotes([instrumentKey])
     ),
     withMarketDataCache(
       marketDataCacheKey(
         "candles",
-        `${request.instrumentKey}:${request.range}:${
+        `${instrumentKey}:${request.range}:${
           config.intraday
             ? request.interval
             : `${config.interval}-${config.unit}`
@@ -58,12 +68,12 @@ export async function buildTutorContext(userId: string, request: TutorRequest) {
       () =>
         config.intraday
           ? client.getIntradayCandles({
-              instrumentKey: request.instrumentKey,
+              instrumentKey,
               unit: intraday.unit,
               interval: intraday.interval,
             })
           : client.getHistoricalCandles({
-              instrumentKey: request.instrumentKey,
+              instrumentKey,
               unit: config.unit,
               interval: config.interval,
               toDate: isoDate(new Date()),
@@ -80,7 +90,7 @@ export async function buildTutorContext(userId: string, request: TutorRequest) {
       .where(
         and(
           eq(holdings.userId, userId),
-          eq(holdings.instrumentKey, request.instrumentKey)
+          eq(holdings.instrumentKey, instrumentKey)
         )
       ),
     instrument.isin
@@ -101,7 +111,7 @@ export async function buildTutorContext(userId: string, request: TutorRequest) {
 
   const quotes = Object.values(quoteResult.data ?? {});
   const quote =
-    quotes.find((item) => item.instrument_key === request.instrumentKey) ??
+    quotes.find((item) => item.instrument_key === instrumentKey) ??
     quotes[0] ??
     null;
   const candles = (candleResult.data?.candles ?? [])
@@ -179,13 +189,12 @@ export async function buildTutorContext(userId: string, request: TutorRequest) {
           updatedAt: holding.updatedAt.toISOString(),
         }
       : { quantity: 0, averageBuyPrice: null, costBasis: 0, updatedAt: null },
-    liveVision: {
-      enabled: request.live,
-      frameCapturedAt: request.chartImages?.length ? new Date().toISOString() : null,
-      deepAnalysis: request.deepAnalysis,
-      note: request.live
-        ? "The learner enabled Souji Live. The attached chart frame is the freshest browser view; exact values still come from this server-side OHLCV snapshot."
-        : "Souji Live is off. Do not imply continuous visual awareness.",
+    visibleChartFrame: {
+      attached: Boolean(request.chartImages?.length),
+      capturedAt: request.chartImages?.length ? fetchedAt : null,
+      note: request.chartImages?.length
+        ? "This frame is the visible browser viewport captured for the current question. Exact values come from chart.ohlcv."
+        : "No chart image was needed for this question.",
     },
     boundaries: {
       educationalOnly: true,
@@ -195,4 +204,55 @@ export async function buildTutorContext(userId: string, request: TutorRequest) {
   };
 
   return { context, candles };
+}
+
+export async function buildPortfolioContext(userId: string) {
+  return {
+    contextVersion: 3,
+    scope: "PORTFOLIO",
+    portfolio: await getPortfolioSnapshot(userId),
+    sourcePolicy: {
+      ownership: "Authenticated server session",
+      identityFieldsIncluded: false,
+      exactValues:
+        "All monetary values are integer paise in INR. Use supplied totals and analytics; do not reconstruct exact totals from prose.",
+    },
+    boundaries: {
+      educationalOnly: true,
+      simulatedTradingOnly: true,
+      mayExecuteOrders: false,
+      riskToleranceKnown: false,
+      timeHorizonKnown: false,
+    },
+  } as const;
+}
+
+export async function buildTutorContext(
+  userId: string,
+  request: TutorRequest,
+  scope: TutorScope
+) {
+  const selection = tutorContextSelection(scope);
+  if (selection.portfolio && !selection.stock) {
+    return { context: await buildPortfolioContext(userId), candles: [] };
+  }
+  if (selection.portfolio && selection.stock) {
+    const [stock, portfolio] = await Promise.all([
+      buildCurrentStockContext(userId, request),
+      getPortfolioSnapshot(userId),
+    ]);
+    return {
+      context: {
+        ...stock.context,
+        contextVersion: 3,
+        scope: "CURRENT_STOCK_AND_PORTFOLIO",
+        portfolio,
+      },
+      candles: stock.candles,
+    };
+  }
+  if (!selection.stock) {
+    throw new Error(`No market context is defined for ${scope}`);
+  }
+  return buildCurrentStockContext(userId, request);
 }

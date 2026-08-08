@@ -10,6 +10,7 @@ import {
   ChartNoAxesCombined,
   CircleAlert,
   Clock3,
+  LogIn,
   LoaderCircle,
   RefreshCw,
   Wifi,
@@ -37,6 +38,7 @@ type IncomeData = {
   }>;
 };
 type StockData = {
+  viewer: { authenticated: boolean };
   instrument: {
     instrumentKey: string;
     tradingSymbol: string;
@@ -48,7 +50,7 @@ type StockData = {
     logoUrl: string | null;
   };
   tradeable: boolean;
-  wallet: { balancePaise: number };
+  wallet: { balancePaise: number } | null;
   holding: { quantity: number; avgPricePaise: number | null };
   inWatchlist: boolean;
   quote: {
@@ -186,7 +188,19 @@ function FinancialPerformance({ quarterly, yearly }: { quarterly: IncomeData | n
   );
 }
 
-function OrderTicket({ data, livePrice, onComplete }: { data: StockData; livePrice: number | null; onComplete: () => Promise<void> }) {
+function OrderTicket({
+  data,
+  livePrice,
+  authenticated,
+  onRequireAuth,
+  onComplete,
+}: {
+  data: StockData;
+  livePrice: number | null;
+  authenticated: boolean;
+  onRequireAuth: () => void;
+  onComplete: () => Promise<void>;
+}) {
   const [side, setSide] = useState<"BUY" | "SELL">("BUY");
   const [quantity, setQuantity] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -200,6 +214,10 @@ function OrderTicket({ data, livePrice, onComplete }: { data: StockData; livePri
   const total = Number.isInteger(qty) && qty > 0 && livePrice ? qty * livePrice : 0;
 
   const submit = async () => {
+    if (!authenticated) {
+      onRequireAuth();
+      return;
+    }
     if (!Number.isInteger(qty) || qty <= 0) return toast.error("Enter a valid whole-number quantity");
     if (!data.tradeable) return toast.error("This instrument is view-only");
     if (!getScheduledMarketStatus().open) {
@@ -247,14 +265,18 @@ function OrderTicket({ data, livePrice, onComplete }: { data: StockData; livePri
             <span className="cursor-not-allowed rounded-full border border-white/10 px-3 py-1.5 text-xs text-slate-600" title="Intraday positions are not implemented yet">Intraday</span>
           </div>
           <label className="block">
-            <span className="mb-2 flex justify-between text-sm text-slate-300"><span>Quantity</span><span className="text-xs text-slate-500">Owned: {data.holding.quantity}</span></span>
+            <span className="mb-2 flex justify-between text-sm text-slate-300"><span>Quantity</span>{authenticated && <span className="text-xs text-slate-500">Owned: {data.holding.quantity}</span>}</span>
             <input inputMode="numeric" min="1" step="1" value={quantity} onChange={(event) => setQuantity(event.target.value.replace(/[^0-9]/g, ""))} className="h-11 w-full rounded-lg border border-white/10 bg-black/20 px-3 text-right text-white focus:border-cyan-400/50" placeholder="0" />
           </label>
           <div className="flex items-center justify-between border-y border-white/10 py-4 text-sm">
             <span className="text-slate-400">Market price</span><span className="font-medium text-white">{money(livePrice)}</span>
           </div>
           <div className="space-y-2 text-xs">
-            <div className="flex justify-between text-slate-500"><span>Virtual balance</span><span>{paise(data.wallet.balancePaise)}</span></div>
+            {authenticated && data.wallet ? (
+              <div className="flex justify-between text-slate-500"><span>Virtual balance</span><span>{paise(data.wallet.balancePaise)}</span></div>
+            ) : (
+              <p className="leading-5 text-slate-500">Sign in with Google to unlock your virtual wallet, holdings and simulated orders.</p>
+            )}
             <div className="flex justify-between text-slate-500"><span>Approx. order value</span><span>{money(total)}</span></div>
           </div>
           {!marketStatus.open && (
@@ -263,8 +285,8 @@ function OrderTicket({ data, livePrice, onComplete }: { data: StockData; livePri
               <p>Market is closed. You cannot buy or sell after market close or before market open.</p>
             </div>
           )}
-          <button disabled={submitting || !data.tradeable || !livePrice || !marketStatus.open} onClick={() => void submit()} className={`flex h-11 w-full items-center justify-center rounded-lg text-sm font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${side === "BUY" ? "bg-emerald-500 hover:bg-emerald-400" : "bg-red-500 hover:bg-red-400"}`}>
-            {submitting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : `${side === "BUY" ? "Buy" : "Sell"} with virtual funds`}
+          <button disabled={submitting || (authenticated && (!data.tradeable || !livePrice || !marketStatus.open))} onClick={() => void submit()} className={`flex h-11 w-full items-center justify-center rounded-lg text-sm font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${side === "BUY" ? "bg-emerald-500 hover:bg-emerald-400" : "bg-red-500 hover:bg-red-400"}`}>
+            {submitting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : authenticated ? `${side === "BUY" ? "Buy" : "Sell"} with virtual funds` : "Sign in to paper trade"}
           </button>
           <p className="text-center text-[11px] leading-relaxed text-slate-600">Execution uses a fresh server-side Upstox price. No real order is sent.</p>
         </div>
@@ -277,6 +299,7 @@ export function StockDetailClient({ instrumentKey }: { instrumentKey: string }) 
   const chartRef = useRef<StockChartHandle>(null);
   const router = useRouter();
   const { data: session, status } = useSession();
+  const authenticated = status === "authenticated";
   const [activeTab, setActiveTab] = useState<DashboardTab>("Explore");
   const [data, setData] = useState<StockData | null>(null);
   const [range, setRange] = useState<Range>("1D");
@@ -289,7 +312,12 @@ export function StockDetailClient({ instrumentKey }: { instrumentKey: string }) 
   const [error, setError] = useState<string | null>(null);
   const [live, setLive] = useState<LiveMarketUpdate | null>(null);
   const [learningOverlays, setLearningOverlays] = useState<LearningOverlay[]>([]);
-  const { add, remove, has } = useWatchlist();
+  const { add, remove, has } = useWatchlist(authenticated);
+
+  const requireAuth = useCallback(() => {
+    const callbackUrl = `/stocks/${encodeURIComponent(instrumentKey)}`;
+    router.push(`/login?callbackUrl=${encodeURIComponent(callbackUrl)}`);
+  }, [instrumentKey, router]);
 
   const fetchDetail = useCallback(async (): Promise<StockData> => {
     const response = await fetch(`/api/stocks/${encodeURIComponent(instrumentKey)}`, { cache: "no-store" });
@@ -303,10 +331,6 @@ export function StockDetailClient({ instrumentKey }: { instrumentKey: string }) 
   const refreshDetail = useCallback(async () => {
     setData(await fetchDetail());
   }, [fetchDetail]);
-
-  useEffect(() => {
-    if (status === "unauthenticated") router.push("/login");
-  }, [status, router]);
 
   useEffect(() => {
     fetchDetail().then(setData).catch((cause) => setError(cause instanceof Error ? cause.message : "Could not load stock")).finally(() => setLoading(false));
@@ -383,6 +407,10 @@ export function StockDetailClient({ instrumentKey }: { instrumentKey: string }) 
 
   const toggleWatchlist = async () => {
     if (!data) return;
+    if (!authenticated) {
+      requireAuth();
+      return;
+    }
     try {
       if (has(data.instrument.instrumentKey)) await remove(data.instrument.instrumentKey);
       else await add({ key: data.instrument.instrumentKey, symbol: data.instrument.tradingSymbol, exchange: data.instrument.exchange, logoUrl: data.instrument.logoUrl });
@@ -400,7 +428,7 @@ export function StockDetailClient({ instrumentKey }: { instrumentKey: string }) 
   return (
     <div className="paperx-dashboard min-h-screen bg-[#07090b] text-slate-100">
       <Toaster position="top-right" />
-      <DashboardNav userName={session?.user?.name} userEmail={session?.user?.email} userImage={session?.user?.image} activeTab={activeTab} onTabChange={selectTab} onInstrumentSelect={selectInstrument} />
+      <DashboardNav authenticated={authenticated} userName={session?.user?.name} userEmail={session?.user?.email} userImage={session?.user?.image} activeTab={activeTab} onTabChange={selectTab} onInstrumentSelect={selectInstrument} />
       <main id="main-content" className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
         {data.availability.marketDataUnavailable && (
           <div className="mb-5 flex items-center gap-2 rounded-xl border border-amber-400/20 bg-amber-400/[0.07] px-4 py-3 text-sm text-amber-200">
@@ -415,7 +443,7 @@ export function StockDetailClient({ instrumentKey }: { instrumentKey: string }) 
                 <StockLogo symbol={data.instrument.tradingSymbol} logoUrl={data.instrument.logoUrl} size={56} />
                 <div className="min-w-0"><p className="text-sm text-slate-500">{data.instrument.tradingSymbol} · {data.instrument.exchange}</p><h1 className="mt-1 truncate text-2xl font-semibold tracking-tight text-white">{data.instrument.name || data.instrument.tradingSymbol}</h1><div className="mt-2 flex flex-wrap items-baseline gap-2"><span className="text-2xl font-semibold text-white">{money(livePrice)}</span><span className={`text-sm ${positive ? "text-emerald-400" : "text-red-400"}`}>{change == null ? "—" : `${positive ? "+" : ""}${change.toFixed(2)} (${positive ? "+" : ""}${(changePercent ?? 0).toFixed(2)}%)`}</span></div></div>
               </div>
-              <div className="flex items-center gap-2"><span className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs ${live ? "border-emerald-400/25 bg-emerald-400/10 text-emerald-300" : "border-white/10 text-slate-500"}`}>{live ? <Wifi className="h-3.5 w-3.5"/> : <WifiOff className="h-3.5 w-3.5"/>}{live ? "5s price refresh" : "Price snapshot"}</span><button onClick={() => void toggleWatchlist()} className="paperx-icon-button" aria-label={inWatchlist ? "Remove from watchlist" : "Add to watchlist"}>{inWatchlist ? <BookmarkCheck className="h-4 w-4 text-cyan-300"/> : <Bookmark className="h-4 w-4"/>}</button></div>
+              <div className="flex items-center gap-2"><span className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs ${live ? "border-emerald-400/25 bg-emerald-400/10 text-emerald-300" : "border-white/10 text-slate-500"}`}>{live ? <Wifi className="h-3.5 w-3.5"/> : <WifiOff className="h-3.5 w-3.5"/>}{live ? "5s price refresh" : "Price snapshot"}</span><button onClick={() => void toggleWatchlist()} className="paperx-icon-button" aria-label={!authenticated ? "Sign in to add this stock to your watchlist" : inWatchlist ? "Remove from watchlist" : "Add to watchlist"}>{!authenticated ? <LogIn className="h-4 w-4"/> : inWatchlist ? <BookmarkCheck className="h-4 w-4 text-cyan-300"/> : <Bookmark className="h-4 w-4"/>}</button></div>
             </section>
 
             <section className="py-6" aria-labelledby="price-chart-heading">
@@ -437,6 +465,9 @@ export function StockDetailClient({ instrumentKey }: { instrumentKey: string }) 
               <div className="mt-9 border-t border-white/10 pt-7"><h3 className="text-base font-semibold text-white">Fundamentals</h3><p className="mt-1 text-xs text-slate-500">Current company value with Upstox sector benchmark</p><div className="mt-5 grid gap-x-8 gap-y-4 sm:grid-cols-2">{["P/E","P/B","ROA","ROE","ROCE","EV/EBITDA"].map((name) => { const ratio=ratios.get(name); return <div key={name} className="flex items-center justify-between border-b border-white/[0.07] py-2.5 text-sm"><span className="text-slate-400">{name}</span><span className="text-right font-medium text-white">{ratio?.company_value ?? "—"}<small className="ml-2 font-normal text-slate-600">Sector {ratio?.sector_value ?? "—"}</small></span></div>; })}</div></div>
             </section>
             <SoujiAssistant
+              scope="stock"
+              authenticated={authenticated}
+              onRequireAuth={requireAuth}
               instrumentKey={instrumentKey}
               symbol={data.instrument.tradingSymbol}
               range={range}
@@ -449,7 +480,7 @@ export function StockDetailClient({ instrumentKey }: { instrumentKey: string }) 
 
             <section className="border-t border-white/10 py-8" aria-labelledby="about-heading"><h2 id="about-heading" className="text-lg font-semibold text-white">About {data.instrument.name || data.instrument.tradingSymbol}</h2><p className="mt-4 max-w-3xl text-sm leading-7 text-slate-400">{data.companyProfile?.company_profile || "A verified company description is not available from Upstox for this instrument."}</p><dl className="mt-5 flex flex-wrap gap-x-10 gap-y-3 text-sm"><div><dt className="text-xs text-slate-500">Sector</dt><dd className="mt-1 text-white">{data.companyProfile?.sector || "—"}</dd></div><div><dt className="text-xs text-slate-500">ISIN</dt><dd className="mt-1 text-white">{data.instrument.isin || "—"}</dd></div><div><dt className="text-xs text-slate-500">Segment</dt><dd className="mt-1 text-white">{data.instrument.segment}</dd></div></dl></section>
           </div>
-          <OrderTicket data={data} livePrice={livePrice} onComplete={refreshDetail}/>
+          <OrderTicket data={data} livePrice={livePrice} authenticated={authenticated} onRequireAuth={requireAuth} onComplete={refreshDetail}/>
         </div>
       </main>
     </div>

@@ -1,18 +1,45 @@
 import "server-only";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { aiConversations, aiMessages, aiUsage } from "@/db/schema";
+import { isConversationInScope } from "@/lib/ai/conversation-scope";
 
-export async function ensureConversation(userId: string, instrumentKey: string, conversationId?: string) {
+export class ConversationScopeError extends Error {
+  constructor() {
+    super("Conversation does not belong to this user and scope.");
+    this.name = "ConversationScopeError";
+  }
+}
+
+function conversationScope(instrumentKey: string | null) {
+  return instrumentKey === null
+    ? isNull(aiConversations.instrumentKey)
+    : eq(aiConversations.instrumentKey, instrumentKey);
+}
+
+export async function ensureConversation(
+  userId: string,
+  instrumentKey: string | null,
+  conversationId?: string
+) {
   if (conversationId) {
     const [existing] = await db.select().from(aiConversations).where(and(
       eq(aiConversations.id, conversationId),
       eq(aiConversations.userId, userId),
-      eq(aiConversations.instrumentKey, instrumentKey),
     ));
-    if (existing) return existing;
+    if (
+      existing &&
+      isConversationInScope(existing.instrumentKey, instrumentKey)
+    ) {
+      return existing;
+    }
+    throw new ConversationScopeError();
   }
-  const [created] = await db.insert(aiConversations).values({ userId, instrumentKey }).returning();
+  const [created] = await db.insert(aiConversations).values({
+    userId,
+    instrumentKey,
+    title: instrumentKey ? "Stock learning session" : "Portfolio coaching session",
+  }).returning();
   return created;
 }
 
@@ -47,10 +74,13 @@ export async function getConversationMessages(conversationId: string) {
   }));
 }
 
-export async function getLatestConversation(userId: string, instrumentKey: string) {
+export async function getLatestConversation(
+  userId: string,
+  instrumentKey: string | null
+) {
   const [conversation] = await db.select().from(aiConversations).where(and(
     eq(aiConversations.userId, userId),
-    eq(aiConversations.instrumentKey, instrumentKey),
+    conversationScope(instrumentKey),
   )).orderBy(desc(aiConversations.updatedAt)).limit(1);
   return conversation ?? null;
 }

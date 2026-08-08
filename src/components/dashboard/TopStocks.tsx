@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Activity, Check, CircleAlert, Plus, TrendingDown, TrendingUp } from "lucide-react";
+import { Activity, Check, CircleAlert, LogIn, Plus, TrendingDown, TrendingUp } from "lucide-react";
+import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import { useWatchlist } from "@/lib/useWatchlist";
 import { StockLogo } from "@/components/StockLogo";
 import Link from "next/link";
@@ -39,7 +41,10 @@ const percentChange = (quote?: Quote) => {
 };
 
 export function TopStocks() {
-    const { add, has } = useWatchlist();
+    const { status } = useSession();
+    const router = useRouter();
+    const authenticated = status === "authenticated";
+    const { add, has } = useWatchlist(authenticated);
     const [quotes, setQuotes] = useState<Map<string, Quote>>(new Map());
     const [filter, setFilter] = useState<MoverFilter>("Gainers");
     const [loading, setLoading] = useState(true);
@@ -152,11 +157,17 @@ export function TopStocks() {
                                     <StockLogo symbol={stock.symbol} logoUrl={logos.get(stock.key)} />
                                     <button
                                         className="paperx-icon-button relative z-10"
-                                        onClick={() => void add({ key: stock.key, symbol: stock.symbol, exchange: "NSE", logoUrl: logos.get(stock.key) ?? null }).catch(() => undefined)}
-                                        disabled={has(stock.key)}
-                                        aria-label={has(stock.key) ? `${stock.symbol} is in watchlist` : `Add ${stock.symbol} to watchlist`}
+                                        onClick={() => {
+                                            if (!authenticated) {
+                                                router.push("/login?callbackUrl=%2Fdashboard");
+                                                return;
+                                            }
+                                            void add({ key: stock.key, symbol: stock.symbol, exchange: "NSE", logoUrl: logos.get(stock.key) ?? null }).catch(() => undefined);
+                                        }}
+                                        disabled={authenticated && has(stock.key)}
+                                        aria-label={!authenticated ? `Sign in to add ${stock.symbol} to watchlist` : has(stock.key) ? `${stock.symbol} is in watchlist` : `Add ${stock.symbol} to watchlist`}
                                     >
-                                        {has(stock.key) ? <Check className="h-4 w-4 text-emerald-400" /> : <Plus className="h-4 w-4" />}
+                                        {!authenticated ? <LogIn className="h-4 w-4" /> : has(stock.key) ? <Check className="h-4 w-4 text-emerald-400" /> : <Plus className="h-4 w-4" />}
                                     </button>
                                 </div>
                                 <p className="mt-5 truncate text-sm font-semibold text-white">{stock.name}</p>

@@ -6,6 +6,7 @@ import {
   toUIMessageStream,
   tool,
   type ModelMessage,
+  type ToolSet,
   type UIMessage,
 } from "ai";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
@@ -13,6 +14,7 @@ import { buildTutorContext } from "@/lib/ai/context";
 import { classifyTutorScope, getTutorGuard } from "@/lib/ai/intent";
 import { paperxGoogle } from "@/lib/ai/provider";
 import {
+  ConversationScopeError,
   ensureConversation,
   getConversationMessages,
   getLatestConversation,
@@ -48,8 +50,22 @@ export async function GET(request: Request) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
-  const instrumentKey = new URL(request.url).searchParams.get("instrumentKey")?.trim();
-  if (!instrumentKey) return Response.json({ error: "instrumentKey is required" }, { status: 400 });
+  const searchParams = new URL(request.url).searchParams;
+  const surface = searchParams.get("surface");
+  const requestedInstrument = searchParams.get("instrumentKey")?.trim() || null;
+  if (surface !== "stock" && surface !== "portfolio") {
+    return Response.json({ error: "A valid surface is required" }, { status: 400 });
+  }
+  if (surface === "stock" && !requestedInstrument) {
+    return Response.json({ error: "instrumentKey is required" }, { status: 400 });
+  }
+  if (surface === "portfolio" && requestedInstrument) {
+    return Response.json(
+      { error: "Portfolio conversations cannot use an instrumentKey" },
+      { status: 400 }
+    );
+  }
+  const instrumentKey = surface === "stock" ? requestedInstrument : null;
 
   const conversation = await getLatestConversation(session.user.id, instrumentKey);
   if (!conversation) return Response.json({ conversationId: null, messages: [] });
@@ -72,12 +88,11 @@ export async function POST(request: Request) {
 
   const body = await request.json().catch(() => null) as {
     messages?: UIMessage[];
-    instrumentKey?: string;
+    surface?: string;
+    instrumentKey?: string | null;
     range?: string;
     interval?: string;
     conversationId?: string;
-    live?: boolean;
-    deepAnalysis?: boolean;
     chartImages?: string[];
   } | null;
   const incomingMessage = body?.messages?.at(-1);
@@ -94,10 +109,12 @@ export async function POST(request: Request) {
   }
 
   try {
-    const guard = getTutorGuard(input);
     const scope = classifyTutorScope(input);
-    const { context, candles } = scope === "STOCK"
-      ? await buildTutorContext(session.user.id, input)
+    const hasStockContext = scope === "STOCK" || scope === "COMBINED";
+    const guard = hasStockContext ? getTutorGuard(input) : null;
+    const { context, candles } =
+      scope === "STOCK" || scope === "PORTFOLIO" || scope === "COMBINED"
+      ? await buildTutorContext(session.user.id, input, scope)
       : {
           context: {
             scope,
@@ -108,12 +125,20 @@ export async function POST(request: Request) {
           },
           candles: [],
         };
-    const conversation = await ensureConversation(session.user.id, input.instrumentKey, input.conversationId);
+    const conversationInstrument =
+      input.surface === "stock" ? input.instrumentKey ?? null : null;
+    const conversation = await ensureConversation(
+      session.user.id,
+      conversationInstrument,
+      input.conversationId
+    );
     const history = await getConversationMessages(conversation.id);
     await saveTutorMessage(conversation.id, "USER", input.question);
     const visionNote = input.chartImages?.length
-      ? `\n\nVISIBLE CHART FRAME\nThe attached image is the learner's newest visible PaperX chart viewport, so horizontally hidden candles may not appear in it.${input.deepAnalysis ? " Perform a thorough visual and OHLCV analysis." : ""} Analyze chart.ohlcv for the whole selected range and use the image for visible structure. If they disagree, trust OHLCV and state the limitation.`
-      : "\n\nLIVE CHART FRAME\nNo frame was supplied. Do not claim to see the chart.";
+      ? "\n\nVISIBLE CHART FRAME\nThe attached image is a one-time capture of the learner's visible PaperX chart viewport, so horizontally hidden candles may not appear in it. Analyze chart.ohlcv for the whole selected range and use the image for visible structure. If they disagree, trust OHLCV and state the limitation."
+      : hasStockContext
+        ? "\n\nVISIBLE CHART FRAME\nNo frame was supplied for this question. Do not claim to see the chart."
+        : "";
     const guardNote = guard ? `\n\nVISIBLE-CHART MISMATCH\n${guard.message}` : "";
     const currentRequest = `PAPERX CONTEXT\n${JSON.stringify(context)}${visionNote}${guardNote}\n\nCURRENT LEARNER REQUEST\n${input.question}`;
     const currentContent = input.chartImages?.length
@@ -127,12 +152,12 @@ export async function POST(request: Request) {
       { role: "user", content: currentContent },
     ];
     const google = paperxGoogle();
-    const result = streamText({
-      model: google(serverEnv.geminiModel),
-      instructions: TUTOR_INSTRUCTIONS,
-      messages,
-      tools: {
-        google_search: google.tools.googleSearch({}),
+    let tools: ToolSet = {
+      google_search: google.tools.googleSearch({}),
+    };
+    if (hasStockContext) {
+      tools = {
+        ...tools,
         drawChart: tool({
           description: "Draw evidence-backed levels, zones, or candle markers on the current stock's selected PaperX chart. Every value must be grounded in PAPERX CONTEXT for this turn.",
           inputSchema: soujiDrawingSchema,
@@ -141,12 +166,19 @@ export async function POST(request: Request) {
             explanation,
           }),
         }),
-      },
+      };
+    }
+    const result = streamText({
+      model: google(serverEnv.geminiModel),
+      instructions: TUTOR_INSTRUCTIONS,
+      messages,
+      tools,
       stopWhen: stepCountIs(3),
       abortSignal: request.signal,
-      maxOutputTokens: scope === "CASUAL" ? 500 : input.deepAnalysis ? 5000 : scope === "GENERAL" ? 2200 : 3600,
+      maxOutputTokens:
+        scope === "CASUAL" ? 500 : scope === "GENERAL" ? 2200 : 4000,
       providerOptions: {
-        google: { thinkingConfig: { thinkingLevel: scope === "CASUAL" ? "minimal" : input.deepAnalysis ? "high" : "medium" } },
+        google: { thinkingConfig: { thinkingLevel: scope === "CASUAL" ? "minimal" : "medium" } },
       },
       onFinish: async ({ text, usage }) => {
         await Promise.all([
@@ -187,6 +219,12 @@ export async function POST(request: Request) {
         error: "Souji cannot verify this stock right now because live market data is temporarily unavailable. Please try again shortly.",
         marketDataUnavailable: true,
       }, { status: 503 });
+    }
+    if (error instanceof ConversationScopeError) {
+      return Response.json(
+        { error: "This conversation does not match the current Souji scope." },
+        { status: 409 }
+      );
     }
     return Response.json({
       error: "Souji is unavailable right now. Your chart and paper account were not changed.",

@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
 import { sql } from "drizzle-orm";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { db } from "@/db";
 import { searchInstruments } from "@/db/instruments";
 import { instruments } from "@/db/schema";
@@ -16,11 +14,6 @@ const MAX_QUERY_LENGTH = 80;
 
 export async function GET(req: NextRequest) {
     try {
-        const session = await getServerSession(authOptions);
-        if (!session || !session.user?.id) {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-        }
-
         const q = req.nextUrl.searchParams.get("q") ?? "";
         if (q.trim().length < 1) {
             return NextResponse.json({ results: [] });

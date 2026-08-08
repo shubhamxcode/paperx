@@ -2,7 +2,7 @@
 
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useCallback, Suspense } from "react";
+import { useState, useCallback, Suspense } from "react";
 import { MarketWatch } from "@/components/MarketWatch";
 import { MarketIndices } from "@/components/MarketIndices";
 import {
@@ -12,6 +12,7 @@ import {
 } from "@/components/dashboard/DashboardNav";
 import { TopStocks } from "@/components/dashboard/TopStocks";
 import { PortfolioTabs } from "@/components/dashboard/PortfolioTabs";
+import { SoujiAssistant } from "@/components/souji/SoujiAssistant";
 import { Toaster } from "react-hot-toast";
 
 function DashboardContent() {
@@ -22,12 +23,9 @@ function DashboardContent() {
     const openGlobalSearchResult = useCallback(async (instrument: InstrumentSearchResult) => {
         router.push(`/stocks/${encodeURIComponent(instrument.instrumentKey)}`);
     }, [router]);
-
-    useEffect(() => {
-        if (status === "unauthenticated") {
-            router.push("/login");
-        }
-    }, [status, router]);
+    const requireAuth = useCallback(() => {
+        router.push("/login?callbackUrl=%2Fdashboard");
+    }, [router]);
 
     if (status === "loading") {
         return (
@@ -46,6 +44,7 @@ function DashboardContent() {
 
             {/* Header */}
             <DashboardNav
+                authenticated={status === "authenticated"}
                 userName={session?.user?.name}
                 userEmail={session?.user?.email}
                 userImage={session?.user?.image}
@@ -84,6 +83,13 @@ function DashboardContent() {
                         )}
                 </div>
             </main>
+            {status === "authenticated" && (
+                <SoujiAssistant
+                    scope="portfolio"
+                    authenticated
+                    onRequireAuth={requireAuth}
+                />
+            )}
         </div>
     );
 }

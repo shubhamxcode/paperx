@@ -3,18 +3,24 @@
 import { signIn, useSession } from "next-auth/react";
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect } from "react";
 
-export default function Login() {
+function LoginContent() {
   const { data: session } = useSession();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const requestedCallback = searchParams.get("callbackUrl");
+  const callbackUrl =
+    requestedCallback?.startsWith("/") && !requestedCallback.startsWith("//")
+      ? requestedCallback
+      : "/dashboard";
 
   useEffect(() => {
     if (session) {
-      router.push("/dashboard");
+      router.replace(callbackUrl);
     }
-  }, [session, router]);
+  }, [callbackUrl, session, router]);
 
   return (
     <div className="relative min-h-screen flex flex-col items-center justify-center bg-black overflow-hidden selection:bg-[#00d8ff] selection:text-black">
@@ -44,12 +50,12 @@ export default function Login() {
             <span className="text-2xl font-bold text-white tracking-tight">PaperX</span>
           </Link>
           <h1 className="text-3xl font-bold text-white mb-2">Welcome to PaperX</h1>
-          <p className="text-gray-400">Sign in to access your trading dashboard</p>
+          <p className="text-gray-400">Sign in to unlock paper trading, Souji, watchlists and your profile</p>
         </div>
 
         <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6 shadow-2xl">
           <button
-            onClick={() => signIn("google", { callbackUrl: "/dashboard" })}
+            onClick={() => signIn("google", { callbackUrl })}
             className="w-full flex items-center justify-center gap-3 bg-white text-black font-semibold h-12 rounded-xl hover:bg-gray-100 transition-all active:scale-[0.98]"
           >
             <svg className="w-5 h-5" viewBox="0 0 24 24">
@@ -94,5 +100,13 @@ export default function Login() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function Login() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-black" />}>
+      <LoginContent />
+    </Suspense>
   );
 }

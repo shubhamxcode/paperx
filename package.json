@@ -14,7 +14,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:ai": "tsx --test src/lib/ai/*.test.ts",
+    "test:ai": "tsx --test src/lib/ai/*.test.ts src/lib/portfolio/*.test.ts",
     "test:trading": "tsx --test src/lib/trading/*.test.ts"
   },
   "dependencies": {

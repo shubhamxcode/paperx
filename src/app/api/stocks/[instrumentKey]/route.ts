@@ -24,9 +24,6 @@ type RouteContext = { params: Promise<{ instrumentKey: string }> };
 export async function GET(_request: NextRequest, context: RouteContext) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
 
     const { instrumentKey: rawKey } = await context.params;
     const instrumentKey = decodeURIComponent(rawKey);
@@ -42,19 +39,23 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: "Instrument not found" }, { status: 404 });
     }
 
-    const userId = session.user.id;
-    const wallet = await ensureWallet(userId);
-    const [[holding], [watchlistItem]] = await Promise.all([
-      db
-        .select({ quantity: holdings.quantity, avgPricePaise: holdings.avgPricePaise })
-        .from(holdings)
-        .where(and(eq(holdings.userId, userId), eq(holdings.instrumentKey, instrumentKey))),
-      db
-        .select({ instrumentKey: watchlistItems.instrumentKey })
-        .from(watchlistItems)
-        .innerJoin(watchlists, eq(watchlistItems.watchlistId, watchlists.id))
-        .where(and(eq(watchlists.userId, userId), eq(watchlistItems.instrumentKey, instrumentKey))),
-    ]);
+    const userId = session?.user?.id ?? null;
+    const [wallet, holdingRows, watchlistRows] = userId
+      ? await Promise.all([
+          ensureWallet(userId),
+          db
+            .select({ quantity: holdings.quantity, avgPricePaise: holdings.avgPricePaise })
+            .from(holdings)
+            .where(and(eq(holdings.userId, userId), eq(holdings.instrumentKey, instrumentKey))),
+          db
+            .select({ instrumentKey: watchlistItems.instrumentKey })
+            .from(watchlistItems)
+            .innerJoin(watchlists, eq(watchlistItems.watchlistId, watchlists.id))
+            .where(and(eq(watchlists.userId, userId), eq(watchlistItems.instrumentKey, instrumentKey))),
+        ])
+      : [null, [], []];
+    const holding = holdingRows[0];
+    const watchlistItem = watchlistRows[0];
 
     const client = new UpstoxClient();
     const [quoteResult, profileResult, ratiosResult, quarterlyResult, yearlyResult] = await Promise.allSettled([
@@ -93,8 +94,9 @@ export async function GET(_request: NextRequest, context: RouteContext) {
         logoUrl: instrument.logoUrl,
         tickSize: instrument.tickSize,
       },
+      viewer: { authenticated: Boolean(userId) },
       tradeable: ["NSE_EQ", "BSE_EQ"].includes(instrument.segment),
-      wallet: { balancePaise: wallet.balancePaise },
+      wallet: wallet ? { balancePaise: wallet.balancePaise } : null,
       holding: holding ?? { quantity: 0, avgPricePaise: null },
       inWatchlist: Boolean(watchlistItem),
       quote,

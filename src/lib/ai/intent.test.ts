@@ -1,16 +1,62 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { classifyTutorScope, getTutorGuard, visibleChartInterval } from "./intent";
+import {
+  classifyTutorScope,
+  getTutorGuard,
+  tutorContextSelection,
+  visibleChartInterval,
+} from "./intent";
 
 test("routes greetings without loading market context", () => {
-  assert.equal(classifyTutorScope({ question: "hey", live: false, deepAnalysis: false }), "CASUAL");
-  assert.equal(classifyTutorScope({ question: "How are you?", live: false, deepAnalysis: false }), "CASUAL");
+  assert.equal(classifyTutorScope({ question: "hey" }), "CASUAL");
+  assert.equal(classifyTutorScope({ question: "How are you?" }), "CASUAL");
 });
 
 test("separates general learning from current-stock questions", () => {
-  assert.equal(classifyTutorScope({ question: "What does diversification mean?", live: false, deepAnalysis: false }), "GENERAL");
-  assert.equal(classifyTutorScope({ question: "Explain today's candle and volume", live: false, deepAnalysis: false }), "STOCK");
-  assert.equal(classifyTutorScope({ question: "Teach me this", live: true, deepAnalysis: false }), "STOCK");
+  assert.equal(classifyTutorScope({ question: "What does diversification mean?" }), "GENERAL");
+  assert.equal(classifyTutorScope({ question: "Explain today's candle and volume" }), "STOCK");
+  assert.equal(classifyTutorScope({ question: "Teach me this chart" }), "STOCK");
+});
+
+test("loads portfolio data only for personal portfolio intent", () => {
+  assert.equal(
+    classifyTutorScope({
+      surface: "portfolio",
+      question: "What does diversification mean?",
+    }),
+    "GENERAL"
+  );
+  assert.equal(
+    classifyTutorScope({
+      surface: "portfolio",
+      question: "Where am I concentrated?",
+    }),
+    "PORTFOLIO"
+  );
+  assert.equal(
+    classifyTutorScope({
+      surface: "portfolio",
+      question: "Review my portfolio",
+    }),
+    "PORTFOLIO"
+  );
+});
+
+test("selects both contexts for stock-to-portfolio fit questions", () => {
+  const scope = classifyTutorScope({
+    surface: "stock",
+    instrumentKey: "NSE_EQ|TEST",
+    question: "How does this stock fit my portfolio?",
+  });
+  assert.equal(scope, "COMBINED");
+  assert.deepEqual(tutorContextSelection(scope), {
+    stock: true,
+    portfolio: true,
+  });
+  assert.deepEqual(tutorContextSelection("PORTFOLIO"), {
+    stock: false,
+    portfolio: true,
+  });
 });
 
 test("stops analysis when the requested candle interval is not visible", () => {

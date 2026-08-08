@@ -1,6 +1,18 @@
 import type { TutorRequest } from "@/lib/ai/schemas";
 
-export type TutorScope = "CASUAL" | "GENERAL" | "STOCK";
+export type TutorScope =
+  | "CASUAL"
+  | "GENERAL"
+  | "STOCK"
+  | "PORTFOLIO"
+  | "COMBINED";
+
+export function tutorContextSelection(scope: TutorScope) {
+  return {
+    stock: scope === "STOCK" || scope === "COMBINED",
+    portfolio: scope === "PORTFOLIO" || scope === "COMBINED",
+  } as const;
+}
 export type TutorGuard = {
   code: "INTERVAL_MISMATCH";
   message: string;
@@ -14,12 +26,32 @@ export type TutorGuard = {
 } | null;
 
 const CASUAL_ONLY = /^(?:hi|hey|hello|hii+|hey there|good (?:morning|afternoon|evening)|how are you|what's up|thank(?:s| you)|bye)[!?.\s]*$/i;
-const STOCK_CONTEXT = /\b(?:this|current|open)\s+(?:stock|company|chart)|\b(?:stock|company|chart|candle|ohlc|today|price|volume|trend|support|resistance|high|low|buy|sell|holding|order|portfolio|p&l|profit|loss)\b/i;
+const STOCK_CONTEXT = /\b(?:this|current|open)\s+(?:stock|company|chart)|\b(?:stock|company|chart|candle|ohlc|today|price|volume|trend|support|resistance|high|low|buy|sell|order)\b/i;
+const PORTFOLIO_CONTEXT = /\b(?:my|our)\s+(?:portfolio|holdings?|positions?|allocation|cash|balance|p&l|profit|loss(?:es)?|winners?|losers?)\b|\b(?:review|analyse|analyze|assess|rebalance)\s+(?:my\s+)?portfolio\b|\bwhere\s+am\s+i\s+concentrated\b|\b(?:my\s+)?(?:biggest|largest)\s+(?:position|holding|gain|winner|loss|loser)\b|\bhow\s+(?:diversified|concentrated)\s+(?:am\s+i|is\s+my\s+portfolio)\b/i;
+const PORTFOLIO_FIT = /\b(?:fit|affect|impact)\s+(?:in|into|on)?\s*(?:my\s+)?portfolio\b|\b(?:add|buy|hold|reduce|sell)\s+more\b|\bmy\s+(?:holding|position)\s+in\s+(?:this|the)\s+(?:stock|company)\b/i;
 
-export function classifyTutorScope(input: Pick<TutorRequest, "question" | "live" | "deepAnalysis">): TutorScope {
-  if (input.live || input.deepAnalysis) return "STOCK";
+export function classifyTutorScope(
+  input: Pick<TutorRequest, "question"> &
+    Partial<Pick<TutorRequest, "surface" | "instrumentKey">>
+): TutorScope {
   if (CASUAL_ONLY.test(input.question.trim())) return "CASUAL";
-  return STOCK_CONTEXT.test(input.question) ? "STOCK" : "GENERAL";
+  const surface = input.surface ?? "stock";
+  const wantsPortfolio = PORTFOLIO_CONTEXT.test(input.question);
+  const wantsCurrentStock =
+    surface === "stock" &&
+    (STOCK_CONTEXT.test(input.question) || PORTFOLIO_FIT.test(input.question));
+  if (
+    surface === "stock" &&
+    (PORTFOLIO_FIT.test(input.question) ||
+      (wantsPortfolio && wantsCurrentStock))
+  ) {
+    return "COMBINED";
+  }
+  if (wantsPortfolio) return "PORTFOLIO";
+  if (surface === "stock" && STOCK_CONTEXT.test(input.question)) {
+    return "STOCK";
+  }
+  return "GENERAL";
 }
 
 const RANGE_INTERVAL: Record<TutorRequest["range"], string> = {

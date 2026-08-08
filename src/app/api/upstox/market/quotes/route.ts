@@ -1,6 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import {
     MarketDataUnavailableError,
     UpstoxClient,
@@ -15,15 +13,6 @@ const MAX_INSTRUMENT_KEY_LENGTH = 128;
 
 export async function GET(req: NextRequest) {
     try {
-        const session = await getServerSession(authOptions);
-
-        if (!session || !session.user?.id) {
-            return NextResponse.json(
-                { error: "Unauthorized" },
-                { status: 401 }
-            );
-        }
-        
         const searchParams = req.nextUrl.searchParams;
         const instrumentKeys = searchParams.getAll("instrument_key");
 

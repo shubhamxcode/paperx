@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
 import { eq } from "drizzle-orm";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { db } from "@/db";
 import { instruments } from "@/db/schema";
 import {
@@ -44,9 +42,6 @@ function isoDate(date: Date) {
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
     const instrumentKey = request.nextUrl.searchParams.get("instrumentKey")?.trim();
     const range = request.nextUrl.searchParams.get("range") as RangeKey | null;
     const requestedInterval = request.nextUrl.searchParams.get("interval") as IntradayIntervalKey | null;

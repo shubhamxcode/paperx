@@ -5,8 +5,6 @@ import {
   Activity,
   ChevronDown,
   Eraser,
-  Maximize2,
-  Radio,
   RotateCcw,
   Send,
   Square,
@@ -14,7 +12,7 @@ import {
 } from "lucide-react";
 import { DefaultChatTransport, type UIMessage } from "ai";
 import Image from "next/image";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import type { LearningOverlay } from "@/components/stocks/StockChart";
 
@@ -40,6 +38,32 @@ type SoujiTools = {
 type SoujiMessage = UIMessage<SoujiMetadata, never, SoujiTools>;
 
 const CHART_QUESTION = /\b(?:this|current|visible|live|chart|candle|price|volume|trend|support|resistance|pattern|intraday|bullish|bearish|breakout)\b/i;
+const PORTFOLIO_PROMPTS = [
+  "Review my portfolio",
+  "Where am I concentrated?",
+  "Explain my biggest loss",
+];
+const STOCK_PROMPTS = [
+  "Read this chart completely",
+  "What pattern is forming here?",
+  "How does this stock fit my portfolio?",
+];
+
+type SoujiAssistantProps = {
+  authenticated: boolean;
+  onRequireAuth: () => void;
+} & (
+  | { scope: "portfolio" }
+  | {
+      scope: "stock";
+      instrumentKey: string;
+      symbol: string;
+      range: string;
+      interval: string;
+      captureChartFrame?: () => string | null;
+      onOverlays: (overlays: LearningOverlay[]) => void;
+    }
+);
 
 const markdownComponents: Components = {
   h1: ({ children }) => <h3 className="mb-2 mt-5 text-base font-semibold leading-6 text-white first:mt-0">{children}</h3>,
@@ -71,28 +95,19 @@ function messageText(message: SoujiMessage) {
     .join("");
 }
 
-export function SoujiAssistant({
-  instrumentKey,
-  symbol,
-  range,
-  interval,
-  captureChartFrame,
-  onOverlays,
-}: {
-  instrumentKey: string;
-  symbol: string;
-  range: string;
-  interval: string;
-  captureChartFrame?: () => string | null;
-  onOverlays: (overlays: LearningOverlay[]) => void;
-}) {
+export function SoujiAssistant(props: SoujiAssistantProps) {
+  const { authenticated, onRequireAuth } = props;
+  const stockScope = props.scope === "stock";
+  const instrumentKey = stockScope ? props.instrumentKey : null;
+  const scopeKey = instrumentKey ?? "portfolio";
+  const symbol = stockScope ? props.symbol : "your portfolio";
+  const onOverlays = stockScope ? props.onOverlays : null;
+  const captureChartFrame = stockScope ? props.captureChartFrame : undefined;
+  const range = stockScope ? props.range : undefined;
+  const interval = stockScope ? props.interval : undefined;
   const [open, setOpen] = useState(false);
-  const [live, setLive] = useState(false);
-  const [deepAnalysis, setDeepAnalysis] = useState(false);
   const [input, setInput] = useState("");
   const [conversationId, setConversationId] = useState<string>();
-  const [frameReady, setFrameReady] = useState(false);
-  const liveFrameRef = useRef<string | undefined>(undefined);
   const messageEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -105,7 +120,7 @@ export function SoujiAssistant({
     error,
     stop,
   } = useChat<SoujiMessage>({
-    id: conversationId ?? `souji-${instrumentKey}`,
+    id: conversationId ?? `souji-${scopeKey}`,
     transport,
     throttle: 50,
     onFinish: ({ message }) => {
@@ -114,17 +129,12 @@ export function SoujiAssistant({
   });
   const busy = status === "submitted" || status === "streaming";
 
-  const refreshLiveFrame = useCallback(() => {
-    if (document.visibilityState !== "visible") return;
-    const frame = captureChartFrame?.();
-    if (!frame) return;
-    liveFrameRef.current = frame;
-    setFrameReady(true);
-  }, [captureChartFrame]);
-
   useEffect(() => {
+    if (!authenticated) return;
     let cancelled = false;
-    fetch(`/api/ai/tutor?instrumentKey=${encodeURIComponent(instrumentKey)}`)
+    const parameters = new URLSearchParams({ surface: props.scope });
+    if (instrumentKey) parameters.set("instrumentKey", instrumentKey);
+    fetch(`/api/ai/tutor?${parameters.toString()}`)
       .then((response) => response.ok ? response.json() : null)
       .then((body) => {
         if (cancelled || !body) return;
@@ -135,22 +145,15 @@ export function SoujiAssistant({
     return () => {
       cancelled = true;
     };
-  }, [instrumentKey, setMessages]);
-
-  useEffect(() => {
-    if (!live) {
-      liveFrameRef.current = undefined;
-      return;
-    }
-    const timer = window.setInterval(refreshLiveFrame, 4_000);
-    return () => window.clearInterval(timer);
-  }, [live, refreshLiveFrame]);
+  }, [authenticated, instrumentKey, props.scope, setMessages]);
 
   useEffect(() => {
     for (const message of messages) {
       for (const part of message.parts) {
         if (part.type !== "tool-drawChart" || part.state !== "output-available") continue;
-        if (isDrawingOutput(part.output)) onOverlays(part.output.overlays);
+        if (isDrawingOutput(part.output) && onOverlays) {
+          onOverlays(part.output.overlays);
+        }
       }
     }
   }, [messages, onOverlays]);
@@ -161,13 +164,17 @@ export function SoujiAssistant({
   }, [messages, status, open]);
 
   const submit = async () => {
+    if (!authenticated) {
+      onRequireAuth();
+      return;
+    }
     const text = input.trim();
     if (!text || busy) return;
     setInput("");
 
-    const needsFrame = live || deepAnalysis || CHART_QUESTION.test(text);
+    const needsFrame = stockScope && CHART_QUESTION.test(text);
     const frame = needsFrame
-      ? liveFrameRef.current ?? captureChartFrame?.() ?? undefined
+      ? captureChartFrame?.() ?? undefined
       : undefined;
 
     try {
@@ -175,17 +182,15 @@ export function SoujiAssistant({
         { text },
         {
           body: {
+            surface: props.scope,
             instrumentKey,
             range,
             interval,
             conversationId,
-            live,
-            deepAnalysis,
             chartImages: frame ? [frame] : [],
           },
         }
       );
-      setDeepAnalysis(false);
     } catch {
       setInput(text);
     }
@@ -195,7 +200,7 @@ export function SoujiAssistant({
     stop();
     setConversationId(undefined);
     setMessages([]);
-    onOverlays([]);
+    onOverlays?.([]);
     setInput("");
     inputRef.current?.focus();
   };
@@ -204,15 +209,20 @@ export function SoujiAssistant({
     return (
       <button
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          if (!authenticated) {
+            onRequireAuth();
+            return;
+          }
+          setOpen(true);
+        }}
         className="fixed bottom-5 right-5 z-50 flex min-h-12 items-center gap-2 rounded-full border border-cyan-300/25 bg-[#0b0d10] px-4 text-sm font-semibold text-white shadow-2xl shadow-black/40 transition hover:border-cyan-300/50 hover:bg-[#111820] max-sm:bottom-4 max-sm:right-4"
-        aria-label="Open Souji"
+        aria-label={authenticated ? "Open Souji" : "Sign in to use Souji"}
       >
         <span className="relative h-8 w-8 shrink-0">
           <span className="absolute inset-0 overflow-hidden rounded-full ring-1 ring-cyan-300/40">
             <Image src="/souji logo.jpeg" alt="" fill sizes="32px" className="object-cover" />
           </span>
-          {live && <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-emerald-400 ring-2 ring-[#0b0d10]" />}
         </span>
         Souji
       </button>
@@ -229,13 +239,10 @@ export function SoujiAssistant({
           <span className="absolute inset-0 overflow-hidden rounded-xl ring-1 ring-cyan-300/35">
             <Image src="/souji logo.jpeg" alt="Souji AI" fill sizes="40px" className="object-cover" priority />
           </span>
-          {live && <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-emerald-400 ring-2 ring-[#0b0d10]" />}
         </span>
         <div className="min-w-0 flex-1">
           <h2 className="truncate text-sm font-semibold text-white">Souji</h2>
-          <p className="truncate text-xs text-slate-400">
-            {live ? `Live with ${symbol} · ${range} ${interval}` : "Your market friend"}
-          </p>
+          <p className="truncate text-xs text-slate-400">Your market friend</p>
         </div>
         <button type="button" onClick={newConversation} className="paperx-icon-button" title="New conversation" aria-label="Start new Souji conversation">
           <RotateCcw className="h-4 w-4" />
@@ -243,61 +250,30 @@ export function SoujiAssistant({
         <button type="button" onClick={() => setOpen(false)} className="paperx-icon-button" title="Minimize" aria-label="Minimize Souji">
           <ChevronDown className="h-4 w-4" />
         </button>
-        <button type="button" onClick={() => { setOpen(false); setLive(false); }} className="paperx-icon-button" title="Close" aria-label="Close Souji">
+        <button type="button" onClick={() => setOpen(false)} className="paperx-icon-button" title="Close" aria-label="Close Souji">
           <X className="h-4 w-4" />
         </button>
       </header>
 
-      <div className="flex shrink-0 items-center gap-2 border-b border-white/10 px-3 py-2">
-        <button
-          type="button"
-          onClick={() => {
-            if (live) {
-              liveFrameRef.current = undefined;
-              setFrameReady(false);
-              setLive(false);
-            } else {
-              setLive(true);
-              window.requestAnimationFrame(refreshLiveFrame);
-            }
-          }}
-          aria-pressed={live}
-          className={`flex min-h-9 items-center gap-2 rounded-lg px-3 text-xs font-semibold transition ${
-            live ? "bg-emerald-400/12 text-emerald-300 ring-1 ring-emerald-300/25" : "bg-white/[0.04] text-slate-300 hover:bg-white/[0.07]"
-          }`}
-        >
-          <Radio className={`h-3.5 w-3.5 ${live ? "animate-pulse motion-reduce:animate-none" : ""}`} />
-          {live ? "Live vision on" : "Go Live"}
-        </button>
-        <button
-          type="button"
-          onClick={() => setDeepAnalysis((value) => !value)}
-          aria-pressed={deepAnalysis}
-          className={`flex min-h-9 items-center gap-2 rounded-lg px-3 text-xs font-medium transition ${
-            deepAnalysis ? "bg-cyan-400/12 text-cyan-200 ring-1 ring-cyan-300/25" : "text-slate-400 hover:bg-white/[0.04] hover:text-slate-200"
-          }`}
-        >
-          <Maximize2 className="h-3.5 w-3.5" />
-          Deep read
-        </button>
-        <button type="button" onClick={() => onOverlays([])} className="ml-auto paperx-icon-button" title="Clear Souji drawings" aria-label="Clear Souji chart drawings">
-          <Eraser className="h-4 w-4" />
-        </button>
-      </div>
+      {onOverlays && (
+        <div className="flex shrink-0 justify-end border-b border-white/10 px-3 py-2">
+          <button type="button" onClick={() => onOverlays([])} className="ml-auto paperx-icon-button" title="Clear Souji drawings" aria-label="Clear Souji chart drawings">
+            <Eraser className="h-4 w-4" />
+          </button>
+        </div>
+      )}
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4" aria-live="polite">
         {messages.length === 0 ? (
           <div className="flex min-h-full flex-col justify-center py-8">
             <p className="text-base font-semibold text-white">Hey, I&apos;m Souji.</p>
             <p className="mt-2 max-w-[38ch] text-sm leading-6 text-slate-400">
-              Ask me anything. Turn on Live vision when you want me to read the chart you are seeing and draw the evidence directly on it.
+              {stockScope
+                ? "Ask about this stock, its chart, or how it fits your paper portfolio."
+                : "Ask me to explain your paper holdings, performance, concentration, or rebalancing trade-offs."}
             </p>
             <div className="mt-5 flex flex-wrap gap-2">
-              {[
-                "Read this chart completely",
-                "What pattern is forming here?",
-                "Is this intraday setup strong or weak?",
-              ].map((prompt) => (
+              {(stockScope ? STOCK_PROMPTS : PORTFOLIO_PROMPTS).map((prompt) => (
                 <button key={prompt} type="button" onClick={() => setInput(prompt)} className="rounded-lg border border-white/10 px-3 py-2 text-left text-xs leading-5 text-slate-300 hover:border-cyan-300/25 hover:bg-cyan-300/[0.04]">
                   {prompt}
                 </button>
@@ -352,12 +328,6 @@ export function SoujiAssistant({
       </div>
 
       <footer className="shrink-0 border-t border-white/10 bg-[#0b0d10] p-3">
-        {live && (
-          <div className="mb-2 flex items-center gap-2 text-[11px] text-emerald-300">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-            {frameReady ? "Chart synced · watching for changes" : "Waiting for chart…"}
-          </div>
-        )}
         <div className="flex items-end gap-2">
           <textarea
             ref={inputRef}
@@ -371,7 +341,7 @@ export function SoujiAssistant({
             }}
             rows={2}
             maxLength={800}
-            placeholder={`Ask Souji about ${symbol} or anything else…`}
+            placeholder={`Ask Souji about ${symbol}…`}
             className="min-h-12 min-w-0 flex-1 resize-none rounded-xl border border-white/10 bg-white/[0.035] px-3 py-2.5 text-sm leading-5 text-white placeholder:text-slate-500 focus:border-cyan-300/45"
           />
           {busy ? (

@@ -127,7 +127,7 @@ export default function ProfilePage() {
   };
 
   useEffect(() => {
-    if (status === "unauthenticated") router.replace("/login");
+    if (status === "unauthenticated") router.replace("/login?callbackUrl=%2Fprofile");
     if (status === "authenticated") void loadProfile();
   }, [status, router]);
 
