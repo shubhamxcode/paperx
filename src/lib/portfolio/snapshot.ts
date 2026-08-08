@@ -17,7 +17,10 @@ import {
   UpstoxClient,
 } from "@/lib/upstox/client";
 import type { LTPQuote } from "@/lib/upstox/types";
-import { calculatePortfolioAnalytics } from "./analytics";
+import {
+  calculatePortfolioAnalytics,
+  calculatePortfolioMarketDataState,
+} from "./analytics";
 
 const LTP_BATCH_SIZE = 50;
 
@@ -134,16 +137,17 @@ export async function getPortfolioSnapshot(userId: string) {
     currentPaise === null ? null : currentPaise - investedPaise;
   const accountValuePaise =
     currentPaise === null ? null : wallet.balancePaise + currentPaise;
+  const marketData = calculatePortfolioMarketDataState({
+    totalHoldings: rows.length,
+    pricedHoldings: analytics.priceCoverage.pricedHoldings,
+    providerAvailable: marketDataAvailable,
+  });
 
   return {
     currency: "INR",
     unit: "PAISE",
     generatedAt: new Date().toISOString(),
-    marketData: {
-      available: marketDataAvailable,
-      freshness: marketDataAvailable ? "RECENT" : "UNAVAILABLE",
-      complete: analytics.priceCoverage.complete,
-    },
+    marketData,
     wallet: {
       balancePaise: wallet.balancePaise,
       startingBalancePaise: STARTING_BALANCE_PAISE,
@@ -168,6 +172,6 @@ export async function getPortfolioSnapshot(userId: string) {
           : accountValuePaise - STARTING_BALANCE_PAISE,
     },
     analytics,
-    livePrices: analytics.priceCoverage.complete,
+    livePrices: marketData.livePrices,
   } as const;
 }

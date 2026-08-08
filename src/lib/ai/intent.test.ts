@@ -40,6 +40,20 @@ test("loads portfolio data only for personal portfolio intent", () => {
     }),
     "PORTFOLIO"
   );
+  assert.equal(
+    classifyTutorScope({
+      surface: "portfolio",
+      question: "How much money do I have?",
+    }),
+    "PORTFOLIO"
+  );
+  assert.equal(
+    classifyTutorScope({
+      surface: "portfolio",
+      question: "What stocks do I own?",
+    }),
+    "PORTFOLIO"
+  );
 });
 
 test("selects both contexts for stock-to-portfolio fit questions", () => {
@@ -57,6 +71,23 @@ test("selects both contexts for stock-to-portfolio fit questions", () => {
     stock: false,
     portfolio: true,
   });
+});
+
+test("uses combined context for implicit current-stock portfolio questions", () => {
+  for (const question of [
+    "How does this affect my holdings?",
+    "Would this make me too concentrated?",
+    "Should I buy this?",
+  ]) {
+    assert.equal(
+      classifyTutorScope({
+        surface: "stock",
+        instrumentKey: "NSE_EQ|TEST",
+        question,
+      }),
+      "COMBINED"
+    );
+  }
 });
 
 test("stops analysis when the requested candle interval is not visible", () => {

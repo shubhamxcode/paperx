@@ -35,6 +35,9 @@ interface Holding {
 interface Portfolio {
     wallet: { balancePaise: number; startingBalancePaise: number };
     holdings: Holding[];
+    marketData?: {
+        freshness: "RECENT" | "PARTIAL" | "UNAVAILABLE" | "NOT_REQUIRED";
+    };
     totals: {
         investedPaise: number;
         currentPaise: number | null;
@@ -324,10 +327,16 @@ export function PortfolioTabs({ tab }: { tab: Exclude<DashboardTab, "Explore" | 
                 <div className="flex items-center justify-between border-b border-white/10 px-5 py-4 sm:px-6">
                     <div>
                         <h2 className="text-base font-semibold normal-case tracking-normal text-white">Holdings</h2>
-                        <p className={`mt-1 flex items-center gap-1.5 text-xs ${portfolio?.livePrices ? "text-emerald-400" : "text-slate-500"}`}>
-                            {portfolio?.livePrices && <Wifi className="h-3 w-3" aria-hidden="true" />}
-                            {portfolio?.livePrices ? "Live Upstox prices · updates automatically" : "Live prices unavailable; showing cost basis"}
-                        </p>
+                        {holdings.length > 0 && (
+                            <p className={`mt-1 flex items-center gap-1.5 text-xs ${portfolio?.livePrices ? "text-emerald-400" : "text-slate-500"}`}>
+                                {portfolio?.livePrices && <Wifi className="h-3 w-3" aria-hidden="true" />}
+                                {portfolio?.livePrices
+                                    ? "Live Upstox prices · updates automatically"
+                                    : portfolio?.marketData?.freshness === "PARTIAL"
+                                        ? "Some prices are unavailable; allocation uses cost basis"
+                                        : "Live prices unavailable; showing cost basis"}
+                            </p>
+                        )}
                     </div>
                     <button onClick={() => void load()} className="paperx-icon-button" aria-label="Refresh holdings">
                         <RefreshCw className="h-4 w-4" />

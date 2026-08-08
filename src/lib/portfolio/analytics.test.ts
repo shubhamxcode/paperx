@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { calculatePortfolioAnalytics } from "./analytics";
+import {
+  calculatePortfolioAnalytics,
+  calculatePortfolioMarketDataState,
+} from "./analytics";
 
 test("calculates current-value allocation and concentration", () => {
   const analytics = calculatePortfolioAnalytics(
@@ -64,4 +67,37 @@ test("returns explicit zero-state analytics for an empty portfolio", () => {
   assert.equal(analytics.largestPosition, null);
   assert.equal(analytics.priceCoverage.complete, true);
   assert.equal(analytics.priceCoverage.totalHoldings, 0);
+});
+
+test("labels empty, partial, and unavailable market-data states accurately", () => {
+  assert.deepEqual(
+    calculatePortfolioMarketDataState({
+      totalHoldings: 0,
+      pricedHoldings: 0,
+      providerAvailable: true,
+    }),
+    {
+      providerAvailable: true,
+      available: true,
+      freshness: "NOT_REQUIRED",
+      complete: true,
+      livePrices: false,
+    }
+  );
+  assert.equal(
+    calculatePortfolioMarketDataState({
+      totalHoldings: 2,
+      pricedHoldings: 1,
+      providerAvailable: true,
+    }).freshness,
+    "PARTIAL"
+  );
+  assert.equal(
+    calculatePortfolioMarketDataState({
+      totalHoldings: 2,
+      pricedHoldings: 0,
+      providerAvailable: false,
+    }).freshness,
+    "UNAVAILABLE"
+  );
 });

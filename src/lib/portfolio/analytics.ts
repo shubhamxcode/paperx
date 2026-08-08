@@ -8,6 +8,30 @@ export type PortfolioAnalyticsHolding = {
 const percent = (part: number, whole: number) =>
   whole > 0 ? Number(((part / whole) * 100).toFixed(2)) : 0;
 
+export function calculatePortfolioMarketDataState(input: {
+  totalHoldings: number;
+  pricedHoldings: number;
+  providerAvailable: boolean;
+}) {
+  const complete = input.pricedHoldings === input.totalHoldings;
+  const freshness =
+    input.totalHoldings === 0
+      ? "NOT_REQUIRED"
+      : input.pricedHoldings === 0
+        ? "UNAVAILABLE"
+        : complete
+          ? "RECENT"
+          : "PARTIAL";
+
+  return {
+    providerAvailable: input.providerAvailable,
+    available: input.totalHoldings === 0 || input.pricedHoldings > 0,
+    freshness,
+    complete,
+    livePrices: input.totalHoldings > 0 && complete,
+  } as const;
+}
+
 export function calculatePortfolioAnalytics(
   holdings: PortfolioAnalyticsHolding[],
   cashPaise: number
