@@ -81,14 +81,8 @@ export const serverEnv = {
     }
     return secret;
   },
-  get upstoxApiKey() {
-    return required("UPSTOX_API_KEY");
-  },
-  get upstoxApiSecret() {
-    return required("UPSTOX_API_SECRET");
-  },
-  get upstoxRedirectUri() {
-    return webUrl("UPSTOX_REDIRECT_URI");
+  get upstoxAnalyticsToken() {
+    return required("UPSTOX_ANALYTICS_TOKEN");
   },
   get upstoxApiBaseUrl() {
     return webOrigin("UPSTOX_API_BASE_URL");

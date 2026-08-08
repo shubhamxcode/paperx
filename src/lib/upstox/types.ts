@@ -1,17 +1,3 @@
-// Upstox API Types
-
-export interface UpstoxTokenResponse {
-    access_token: string;
-    token_type: string;
-    expires_in: number;
-    refresh_token?: string;
-}
-
-export interface UpstoxToken {
-    accessToken: string;
-    expiresAt: Date;
-}
-
 export interface MarketQuote {
     instrument_key: string;
     instrument_token?: string; // Added to handle Upstox response format
@@ -46,32 +32,4 @@ export interface LTPQuote {
     ltq?: number;
     volume?: number;
     cp?: number;
-}
-
-export interface WebSocketFeed {
-    type: 'ltpc' | 'full';
-    feeds: {
-        [key: string]: {
-            ff?: {
-                marketFF?: {
-                    ltpc?: {
-                        ltp?: number;
-                        ltt?: string;
-                        ltq?: number;
-                        cp?: number;
-                    };
-                };
-            };
-        };
-    };
-}
-
-export interface UpstoxError {
-    status: string;
-    errors: Array<{
-        errorCode: string;
-        message: string;
-        propertyPath: string | null;
-        invalidValue: string | null;
-    }>;
 }

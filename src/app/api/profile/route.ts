@@ -10,7 +10,6 @@ import {
   type ProfileSettingsUpdate,
   updateUserSettings,
 } from "@/db/profile";
-import { getUpstoxToken, isTokenExpired } from "@/db/upstox";
 import { ensureWallet } from "@/lib/trading/engine";
 
 async function currentUserId() {
@@ -57,7 +56,7 @@ export async function GET() {
     const userId = await currentUserId();
     if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const [user, wallet, settings, holdingTotal, orderTotal, watchlistTotal, token] =
+    const [user, wallet, settings, holdingTotal, orderTotal, watchlistTotal] =
       await Promise.all([
         db.select().from(users).where(eq(users.id, userId)).limit(1).then((rows) => rows[0]),
         ensureWallet(userId),
@@ -70,7 +69,6 @@ export async function GET() {
           .innerJoin(watchlists, eq(watchlistItems.watchlistId, watchlists.id))
           .where(and(eq(watchlists.userId, userId), eq(watchlists.isDefault, true)))
           .then((rows) => rows[0].value),
-        getUpstoxToken(userId),
       ]);
     if (!user) return NextResponse.json({ error: "Account not found" }, { status: 404 });
 
@@ -92,11 +90,6 @@ export async function GET() {
       },
       connections: {
         google: true,
-        upstox: {
-          connected: Boolean(token && !isTokenExpired(token.expiresAt)),
-          expired: Boolean(token && isTokenExpired(token.expiresAt)),
-          expiresAt: token?.expiresAt ?? null,
-        },
       },
       settings,
     });

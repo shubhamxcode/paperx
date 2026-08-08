@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
-import { UpstoxClient, UpstoxAuthError } from "@/lib/upstox/client";
+import {
+    MarketDataUnavailableError,
+    UpstoxClient,
+} from "@/lib/upstox/client";
+import {
+    marketDataCacheKey,
+    withMarketDataCache,
+} from "@/lib/upstox/cache";
 
 const MAX_INSTRUMENTS = 50;
 const MAX_INSTRUMENT_KEY_LENGTH = 128;
@@ -37,8 +44,12 @@ export async function GET(req: NextRequest) {
             );
         }
 
-        const upstoxClient = new UpstoxClient(session.user.id);
-        const quotes = await upstoxClient.getMarketQuotes(instrumentKeys);
+        const normalizedKeys = [...new Set(instrumentKeys)].sort();
+        const quotes = await withMarketDataCache(
+            marketDataCacheKey("quotes", normalizedKeys.join(",")),
+            3,
+            () => new UpstoxClient().getMarketQuotes(normalizedKeys)
+        );
 
         return NextResponse.json(quotes);
     } catch (error: unknown) {
@@ -46,16 +57,14 @@ export async function GET(req: NextRequest) {
             "Error fetching market quotes:",
             error instanceof Error ? error.message : "Unknown error"
         );
-        // Only a genuine Upstox session failure asks the user to reconnect.
-        // Everything else is a normal error (500).
-        if (error instanceof UpstoxAuthError) {
+        if (error instanceof MarketDataUnavailableError) {
             return NextResponse.json(
-                { error: "Upstox session expired", reconnect: true },
-                { status: 401 }
+                { error: error.message, marketDataUnavailable: true },
+                { status: 503 }
             );
         }
         return NextResponse.json(
-            { error: "Failed to fetch market quotes", reconnect: false },
+            { error: "Failed to fetch market quotes" },
             { status: 500 }
         );
     }

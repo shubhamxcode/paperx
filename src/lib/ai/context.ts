@@ -1,10 +1,15 @@
 import "server-only";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { instruments } from "@/db/schema";
+import { holdings, instruments } from "@/db/schema";
 import { UpstoxClient } from "@/lib/upstox/client";
 import type { TutorRequest } from "@/lib/ai/schemas";
 import { prepareCandlesForAi } from "@/lib/ai/candle-context";
+import { buildTechnicalContext } from "@/lib/ai/technical-context";
+import {
+  marketDataCacheKey,
+  withMarketDataCache,
+} from "@/lib/upstox/cache";
 
 const RANGE_CONFIG = {
   "1D": { days: 0, unit: "minutes", interval: 5, intraday: true },
@@ -31,23 +36,74 @@ export async function buildTutorContext(userId: string, request: TutorRequest) {
   const [instrument] = await db.select().from(instruments).where(eq(instruments.instrumentKey, request.instrumentKey));
   if (!instrument) throw new Error("Instrument not found");
 
-  const client = new UpstoxClient(userId);
+  const client = new UpstoxClient();
   const config = RANGE_CONFIG[request.range];
   const intraday = INTRADAY[request.interval];
-  const [quoteResult, candleResult] = await Promise.all([
-    client.getMarketQuotes([request.instrumentKey]),
-    config.intraday
-      ? client.getIntradayCandles({ instrumentKey: request.instrumentKey, unit: intraday.unit, interval: intraday.interval })
-      : client.getHistoricalCandles({
-          instrumentKey: request.instrumentKey,
-          unit: config.unit,
-          interval: config.interval,
-          toDate: isoDate(new Date()),
-          fromDate: isoDate(new Date(Date.now() - config.days * 86_400_000)),
-        }),
+  const [quoteResult, candleResult, [holding], profileResult, ratiosResult] = await Promise.all([
+    withMarketDataCache(
+      marketDataCacheKey("quotes", request.instrumentKey),
+      3,
+      () => client.getMarketQuotes([request.instrumentKey])
+    ),
+    withMarketDataCache(
+      marketDataCacheKey(
+        "candles",
+        `${request.instrumentKey}:${request.range}:${
+          config.intraday
+            ? request.interval
+            : `${config.interval}-${config.unit}`
+        }`
+      ),
+      config.intraday ? 15 : 300,
+      () =>
+        config.intraday
+          ? client.getIntradayCandles({
+              instrumentKey: request.instrumentKey,
+              unit: intraday.unit,
+              interval: intraday.interval,
+            })
+          : client.getHistoricalCandles({
+              instrumentKey: request.instrumentKey,
+              unit: config.unit,
+              interval: config.interval,
+              toDate: isoDate(new Date()),
+              fromDate: isoDate(new Date(Date.now() - config.days * 86_400_000)),
+            })
+    ),
+    db
+      .select({
+        quantity: holdings.quantity,
+        avgPricePaise: holdings.avgPricePaise,
+        updatedAt: holdings.updatedAt,
+      })
+      .from(holdings)
+      .where(
+        and(
+          eq(holdings.userId, userId),
+          eq(holdings.instrumentKey, request.instrumentKey)
+        )
+      ),
+    instrument.isin
+      ? withMarketDataCache(
+          marketDataCacheKey("profile", instrument.isin),
+          3_600,
+          () => client.getCompanyProfile(instrument.isin!)
+        ).catch(() => null)
+      : Promise.resolve(null),
+    instrument.isin
+      ? withMarketDataCache(
+          marketDataCacheKey("ratios", instrument.isin),
+          3_600,
+          () => client.getKeyRatios(instrument.isin!)
+        ).catch(() => null)
+      : Promise.resolve(null),
   ]);
 
-  const quote = Object.values(quoteResult.data ?? {})[0] ?? null;
+  const quotes = Object.values(quoteResult.data ?? {});
+  const quote =
+    quotes.find((item) => item.instrument_key === request.instrumentKey) ??
+    quotes[0] ??
+    null;
   const candles = (candleResult.data?.candles ?? [])
     .map(([timestamp, open, high, low, close, volume]) => ({
       time: Math.floor(new Date(timestamp).getTime() / 1000), open, high, low, close, volume,
@@ -57,8 +113,17 @@ export async function buildTutorContext(userId: string, request: TutorRequest) {
 
   const previousClose = quote?.last_price != null && quote.net_change != null ? quote.last_price - quote.net_change : null;
   const modelCandles = prepareCandlesForAi(candles);
+  const fetchedAt = new Date().toISOString();
   const context = {
-    asOf: new Date().toISOString(),
+    contextVersion: 2,
+    scope: "CURRENT_STOCK",
+    fetchedAt,
+    timezone: "Asia/Kolkata",
+    sourcePolicy: {
+      provider: "Upstox read-only market data",
+      exactValues: "Use quote and chart.ohlcv; never infer exact prices from image pixels.",
+      visualFrame: "The image contains only the learner's visible chart viewport.",
+    },
     instrument: {
       instrumentKey: instrument.instrumentKey,
       symbol: instrument.tradingSymbol,
@@ -66,7 +131,25 @@ export async function buildTutorContext(userId: string, request: TutorRequest) {
       exchange: instrument.exchange,
       segment: instrument.segment,
       isin: instrument.isin,
+      instrumentType: instrument.instrumentType,
+      tickSize: instrument.tickSize,
     },
+    quote: quote ? {
+      lastPrice: quote.last_price,
+      previousClose,
+      netChange: quote.net_change,
+      netChangePercent:
+        previousClose && quote.net_change != null
+          ? (quote.net_change / previousClose) * 100
+          : null,
+      volume: quote.volume,
+      averagePrice: quote.average_price,
+      totalBuyQuantity: quote.total_buy_quantity,
+      totalSellQuantity: quote.total_sell_quantity,
+      lowerCircuitLimit: quote.lower_circuit_limit,
+      upperCircuitLimit: quote.upper_circuit_limit,
+      lastTradedTime: quote.last_traded_time,
+    } : null,
     chart: {
       range: request.range,
       interval: config.intraday ? request.interval : `${config.interval} ${config.unit}`,
@@ -82,7 +165,20 @@ export async function buildTutorContext(userId: string, request: TutorRequest) {
         complete: modelCandles.complete,
         candles: modelCandles.candles,
       },
+      technicals: buildTechnicalContext(candles),
     },
+    company: {
+      profile: profileResult?.data ?? null,
+      keyRatios: ratiosResult?.data ?? [],
+    },
+    learnerPaperPosition: holding
+      ? {
+          quantity: holding.quantity,
+          averageBuyPrice: holding.avgPricePaise / 100,
+          costBasis: (holding.avgPricePaise * holding.quantity) / 100,
+          updatedAt: holding.updatedAt.toISOString(),
+        }
+      : { quantity: 0, averageBuyPrice: null, costBasis: 0, updatedAt: null },
     liveVision: {
       enabled: request.live,
       frameCapturedAt: request.chartImages?.length ? new Date().toISOString() : null,
@@ -91,13 +187,6 @@ export async function buildTutorContext(userId: string, request: TutorRequest) {
         ? "The learner enabled Souji Live. The attached chart frame is the freshest browser view; exact values still come from this server-side OHLCV snapshot."
         : "Souji Live is off. Do not imply continuous visual awareness.",
     },
-    quote: quote ? {
-      lastPrice: quote.last_price,
-      previousClose,
-      netChange: quote.net_change,
-      volume: quote.volume,
-      lastTradedTime: quote.last_traded_time,
-    } : null,
     boundaries: {
       educationalOnly: true,
       simulatedTradingOnly: true,

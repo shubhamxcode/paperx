@@ -1,7 +1,7 @@
 # PaperX Durable Project Context
 
-Last refreshed: 4 August 2026  
-Code checkpoint: `9a3c209` (`main`)  
+Last refreshed: 8 August 2026
+Code checkpoint: working tree after shared-market-data migration
 Notion root: https://app.notion.com/p/3ad947a88a00803a91f8ff66b8a5845a
 
 ## Working agreement
@@ -21,8 +21,9 @@ Long-term direction: real charts and live data, delivery/intraday practice, pend
 ## Current implementation state
 
 - Chunks 0–2 are complete: stable foundation, PostgreSQL watchlists, and authenticated profile/settings/account-safety flows.
-- The first Chunk 3 stock-detail implementation is present in code: stable stock routes, real chart ranges and intraday intervals, shared Upstox V3 WebSocket data, company details, watchlist actions, and simulated BUY/SELL.
-- `main` is one local commit ahead of `origin/main` at the refresh checkpoint.
+- The stock experience includes stable routes, real chart ranges and intraday intervals, shared batched price polling, company details, watchlist actions, and simulated BUY/SELL.
+- Souji is a durable, PostgreSQL-backed tutor with per-stock context, full selected-range OHLCV, deterministic technical summaries, visible-chart vision, and evidence-validated chart drawing.
+- Trading is restricted to scheduled/provider-confirmed market hours. Buys use weighted average cost; partial sells consume FIFO lots and credit live execution proceeds.
 - Existing Notion roadmap text may lag the implementation page; treat the code and the newest implementation note as the current truth.
 
 ## Architecture
@@ -30,8 +31,8 @@ Long-term direction: real charts and live data, delivery/intraday practice, pend
 - Next.js 16 App Router, React 19, TypeScript, Tailwind CSS 4.
 - PostgreSQL via `pg` and Drizzle ORM.
 - NextAuth v4 with Google OAuth and database sessions.
-- Upstox OAuth and server-side REST clients for quotes, candles, search, fundamentals, and WebSocket authorization.
-- A shared browser-side Market Data Feed V3 manager decodes binary Protobuf and multiplexes subscriptions.
+- One server-only Upstox Analytics token provides read-only quotes, candles, search, fundamentals, and market status for all users.
+- Browser subscribers are multiplexed into grouped five-second REST polling; Vercel Runtime Cache coalesces identical regional reads for short TTLs.
 - `lightweight-charts` renders stock charts.
 - GSAP, Three.js, React Three Fiber, and Drei power the marketing experience.
 
@@ -39,15 +40,15 @@ Long-term direction: real charts and live data, delivery/intraday practice, pend
 
 - `src/app`: pages and server API routes.
 - `src/components`: landing, dashboard, stock-detail, and shared UI.
-- `src/db`: Drizzle connection, schema, instruments, profile, Upstox tokens, and watchlist services.
-- `src/lib/upstox`: provider client, types, and shared live-feed manager.
+- `src/db`: Drizzle connection, schema, instruments, profile, AI persistence, paper-account lots, and watchlist services.
+- `src/lib/upstox`: server analytics client, regional cache wrapper, types, and shared browser polling manager.
 - `src/lib/trading/engine.ts`: server-authoritative paper market-order execution.
 - `src/app/stocks/[instrumentKey]` and `src/components/stocks`: current stock experience.
 
 ## Data and security invariants
 
 - User ownership always comes from the server session; never trust a browser-supplied user ID.
-- Upstox tokens and all secrets stay server-side.
+- The shared Analytics token and all secrets stay server-side; no market credential is stored per user.
 - Instrument identity uses the exact Upstox `instrumentKey`, not display names.
 - Money is stored as integer paise. Starting virtual capital is `100_000_000` paise (₹10,00,000).
 - Only NSE/BSE cash equities are currently tradeable; indices are view-only.
@@ -59,19 +60,19 @@ Long-term direction: real charts and live data, delivery/intraday practice, pend
 ## Main user flows
 
 1. Google login creates/loads the NextAuth database identity and session.
-2. Upstox OAuth stores one access token per PaperX user.
+2. Authenticated PaperX users receive market data through server routes backed by one read-only Analytics token.
 3. Dashboard/search loads instrument and quote data; selecting a stock navigates to `/stocks/[instrumentKey]`.
-4. Stock detail loads local metadata plus authenticated Upstox candles/quote/fundamentals.
-5. The shared V3 feed subscribes only to required instruments and reconnects with capped backoff.
+4. Stock detail loads local metadata plus server-side Upstox candles/quote/fundamentals.
+5. The shared polling manager batches required instruments, pauses in hidden tabs, and retries with capped backoff.
 6. Watchlist mutations use authenticated APIs with optimistic UI and rollback.
 7. Paper BUY/SELL validates the instrument, quantity, segment, live server price, funds/shares, then updates PostgreSQL atomically.
 
 ## Database model
 
 - Auth: `user`, `account`, `session`.
-- Provider: `upstox_token`.
 - Market reference: `instrument` with stable key, raw and short names, exchange/segment, ISIN, and logo metadata.
-- Paper account: `wallet`, `holding`, `order`.
+- Paper account: `wallet`, `holding`, FIFO `holding_lot`, `order`.
+- Souji: `ai_conversation`, `ai_message`, `ai_usage`.
 - Preferences: `user_setting`.
 - Watchlist: `watchlist`, `watchlist_item`.
 

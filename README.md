@@ -20,9 +20,9 @@ NextAuth, and Upstox market data.
 
 4. Open [https://localhost:3000](https://localhost:3000).
 
-The local server intentionally uses HTTPS because the Upstox OAuth callback
-requires it. Your browser may ask you to trust the locally generated
-development certificate.
+The local server uses HTTPS so its Google OAuth origin matches production-like
+secure callback behavior. Your browser may ask you to trust the locally
+generated development certificate.
 
 ## OAuth configuration
 
@@ -32,12 +32,9 @@ Google Cloud OAuth client:
 - Authorized redirect URI:
   `https://localhost:3000/api/auth/callback/google`
 
-Upstox application:
-
-- Redirect URI: `https://localhost:3000/api/auth/upstox/callback`
-
-These values must match `.env` exactly, including protocol, host, port, path,
-and trailing slash.
+Upstox does not use per-user OAuth. Add the read-only Analytics token to the
+server environment as `UPSTOX_ANALYTICS_TOKEN`. Never prefix it with
+`NEXT_PUBLIC_` or expose it to browser code.
 
 ## Checks
 

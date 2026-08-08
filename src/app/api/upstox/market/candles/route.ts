@@ -4,7 +4,14 @@ import { eq } from "drizzle-orm";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { db } from "@/db";
 import { instruments } from "@/db/schema";
-import { UpstoxAuthError, UpstoxClient } from "@/lib/upstox/client";
+import {
+  MarketDataUnavailableError,
+  UpstoxClient,
+} from "@/lib/upstox/client";
+import {
+  marketDataCacheKey,
+  withMarketDataCache,
+} from "@/lib/upstox/cache";
 
 const RANGE_CONFIG = {
   "1D": { days: 0, unit: "minutes", interval: 5, intraday: true },
@@ -60,20 +67,33 @@ export async function GET(request: NextRequest) {
     const intradayInterval = requestedInterval
       ? INTRADAY_INTERVALS[requestedInterval]
       : INTRADAY_INTERVALS["5m"];
-    const client = new UpstoxClient(session.user.id);
-    const result = config.intraday
-      ? await client.getIntradayCandles({
-          instrumentKey,
-          unit: intradayInterval.unit,
-          interval: intradayInterval.interval,
-        })
-      : await client.getHistoricalCandles({
-          instrumentKey,
-          unit: config.unit,
-          interval: config.interval,
-          toDate: isoDate(new Date()),
-          fromDate: isoDate(new Date(Date.now() - config.days * 86_400_000)),
-        });
+    const result = await withMarketDataCache(
+      marketDataCacheKey(
+        "candles",
+        `${instrumentKey}:${range}:${
+          config.intraday
+            ? requestedInterval ?? "5m"
+            : `${config.interval}-${config.unit}`
+        }`
+      ),
+      config.intraday ? 15 : 300,
+      () => {
+        const client = new UpstoxClient();
+        return config.intraday
+          ? client.getIntradayCandles({
+              instrumentKey,
+              unit: intradayInterval.unit,
+              interval: intradayInterval.interval,
+            })
+          : client.getHistoricalCandles({
+              instrumentKey,
+              unit: config.unit,
+              interval: config.interval,
+              toDate: isoDate(new Date()),
+              fromDate: isoDate(new Date(Date.now() - config.days * 86_400_000)),
+            });
+      }
+    );
 
     const candles = (result.data?.candles ?? [])
       .map(([timestamp, open, high, low, close, volume]) => ({
@@ -95,8 +115,11 @@ export async function GET(request: NextRequest) {
       candles,
     });
   } catch (error: unknown) {
-    if (error instanceof UpstoxAuthError) {
-      return NextResponse.json({ error: error.message, reconnect: true }, { status: 401 });
+    if (error instanceof MarketDataUnavailableError) {
+      return NextResponse.json(
+        { error: error.message, marketDataUnavailable: true },
+        { status: 503 }
+      );
     }
     console.error("Error loading candles:", error);
     return NextResponse.json({ error: "Failed to load chart data" }, { status: 500 });

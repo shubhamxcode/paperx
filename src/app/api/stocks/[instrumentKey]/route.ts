@@ -10,7 +10,14 @@ import {
   watchlists,
 } from "@/db/schema";
 import { ensureWallet } from "@/lib/trading/engine";
-import { UpstoxAuthError, UpstoxClient } from "@/lib/upstox/client";
+import {
+  MarketDataUnavailableError,
+  UpstoxClient,
+} from "@/lib/upstox/client";
+import {
+  marketDataCacheKey,
+  withMarketDataCache,
+} from "@/lib/upstox/cache";
 
 type RouteContext = { params: Promise<{ instrumentKey: string }> };
 
@@ -49,18 +56,26 @@ export async function GET(_request: NextRequest, context: RouteContext) {
         .where(and(eq(watchlists.userId, userId), eq(watchlistItems.instrumentKey, instrumentKey))),
     ]);
 
-    const client = new UpstoxClient(userId);
+    const client = new UpstoxClient();
     const [quoteResult, profileResult, ratiosResult, quarterlyResult, yearlyResult] = await Promise.allSettled([
-      client.getMarketQuotes([instrumentKey]),
-      instrument.isin ? client.getCompanyProfile(instrument.isin) : Promise.resolve(null),
-      instrument.isin ? client.getKeyRatios(instrument.isin) : Promise.resolve(null),
-      instrument.isin ? client.getIncomeStatement(instrument.isin, "quarterly") : Promise.resolve(null),
-      instrument.isin ? client.getIncomeStatement(instrument.isin, "yearly") : Promise.resolve(null),
+      withMarketDataCache(
+        marketDataCacheKey("quotes", instrumentKey),
+        3,
+        () => client.getMarketQuotes([instrumentKey])
+      ),
+      instrument.isin
+        ? withMarketDataCache(marketDataCacheKey("profile", instrument.isin), 3_600, () => client.getCompanyProfile(instrument.isin!))
+        : Promise.resolve(null),
+      instrument.isin
+        ? withMarketDataCache(marketDataCacheKey("ratios", instrument.isin), 3_600, () => client.getKeyRatios(instrument.isin!))
+        : Promise.resolve(null),
+      instrument.isin
+        ? withMarketDataCache(marketDataCacheKey("income-quarterly", instrument.isin), 3_600, () => client.getIncomeStatement(instrument.isin!, "quarterly"))
+        : Promise.resolve(null),
+      instrument.isin
+        ? withMarketDataCache(marketDataCacheKey("income-yearly", instrument.isin), 3_600, () => client.getIncomeStatement(instrument.isin!, "yearly"))
+        : Promise.resolve(null),
     ]);
-
-    if (quoteResult.status === "rejected" && quoteResult.reason instanceof UpstoxAuthError) {
-      throw quoteResult.reason;
-    }
 
     const quote = quoteResult.status === "fulfilled"
       ? Object.values(quoteResult.value.data ?? {})[0] ?? null
@@ -97,12 +112,12 @@ export async function GET(_request: NextRequest, context: RouteContext) {
           quarterlyResult.status === "fulfilled" &&
           yearlyResult.status === "fulfilled"
         ),
+        marketDataUnavailable:
+          quoteResult.status === "rejected" &&
+          quoteResult.reason instanceof MarketDataUnavailableError,
       },
     });
   } catch (error: unknown) {
-    if (error instanceof UpstoxAuthError) {
-      return NextResponse.json({ error: error.message, reconnect: true }, { status: 401 });
-    }
     console.error("Error loading stock detail:", error);
     return NextResponse.json({ error: "Failed to load stock details" }, { status: 500 });
   }

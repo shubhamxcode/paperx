@@ -11,7 +11,6 @@ import {
   CheckCircle2,
   ChevronRight,
   CircleDollarSign,
-  ExternalLink,
   KeyRound,
   Loader2,
   LogOut,
@@ -53,7 +52,6 @@ type Profile = {
   };
   connections: {
     google: boolean;
-    upstox: { connected: boolean; expired: boolean; expiresAt: string | null };
   };
   settings: Settings;
 };
@@ -154,13 +152,6 @@ export default function ProfilePage() {
     } finally {
       setSaving(false);
     }
-  };
-
-  const disconnectUpstox = async () => {
-    if (!window.confirm("Disconnect Upstox market data from PaperX?")) return;
-    const response = await fetch("/api/auth/upstox/disconnect", { method: "POST" });
-    if (response.ok) await loadProfile();
-    else setError("Failed to disconnect Upstox");
   };
 
   const runDangerAction = async () => {
@@ -289,9 +280,8 @@ export default function ProfilePage() {
 
             <section className="rounded-2xl border border-white/10 bg-[#0b0d10] p-6">
               <div className="flex items-center gap-2"><KeyRound className="h-5 w-5 text-cyan-400" /><h2 className="font-semibold text-white">Connections</h2></div>
-              <div className="mt-4 divide-y divide-white/10">
+              <div className="mt-4">
                 <div className="flex items-center justify-between py-4"><div><p className="text-sm font-medium text-white">Google</p><p className="text-xs text-slate-500">Identity and secure login</p></div><span className="flex items-center gap-1.5 text-xs text-emerald-400"><CheckCircle2 className="h-4 w-4" /> Connected</span></div>
-                <div className="flex items-center justify-between gap-4 py-4"><div><p className="text-sm font-medium text-white">Upstox</p><p className="text-xs text-slate-500">Live market data only</p></div>{profile.connections.upstox.connected ? <button onClick={() => void disconnectUpstox()} className="text-xs text-red-400 hover:text-red-300">Disconnect</button> : <Link href="/api/auth/upstox/authorize" className="flex items-center gap-1 text-xs text-cyan-400 hover:text-cyan-300">Connect <ExternalLink className="h-3 w-3" /></Link>}</div>
               </div>
             </section>
           </div>
@@ -325,7 +315,7 @@ export default function ProfilePage() {
           <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#0b0d10] p-6 shadow-2xl">
             <div className={`grid h-11 w-11 place-items-center rounded-xl ${confirmAction === "delete" ? "bg-red-500/10 text-red-400" : "bg-amber-500/10 text-amber-300"}`}>{confirmAction === "delete" ? <Trash2 className="h-5 w-5" /> : <RefreshCcw className="h-5 w-5" />}</div>
             <h2 id="confirm-title" className="mt-4 text-xl font-semibold text-white">{confirmAction === "delete" ? "Delete PaperX account?" : "Reset paper account?"}</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-400">{confirmAction === "delete" ? "This permanently deletes your PaperX account, sessions, virtual balance, orders, holdings, watchlist, settings and Upstox token." : "Your virtual cash returns to ₹10,00,000 and all holdings and order history are removed. Your login, settings and watchlist remain."}</p>
+            <p className="mt-2 text-sm leading-6 text-slate-400">{confirmAction === "delete" ? "This permanently deletes your PaperX account, sessions, virtual balance, orders, holdings, watchlist and settings." : "Your virtual cash returns to ₹10,00,000 and all holdings and order history are removed. Your login, settings and watchlist remain."}</p>
             <label className="mt-5 block text-sm text-slate-400">Type <strong className="text-white">{expectedConfirmation}</strong> to confirm<input autoFocus value={confirmation} onChange={(event) => setConfirmation(event.target.value)} className="mt-2 w-full rounded-xl border border-white/10 bg-black px-3 py-2.5 font-mono text-white outline-none focus:border-cyan-400/60" /></label>
             <div className="mt-6 flex gap-3">
               <button onClick={() => { setConfirmAction(null); setConfirmation(""); }} className="flex-1 rounded-xl border border-white/10 px-4 py-2.5 text-sm text-slate-300 hover:bg-white/5">Cancel</button>

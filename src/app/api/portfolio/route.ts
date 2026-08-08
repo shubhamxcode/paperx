@@ -4,15 +4,21 @@ import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { db } from "@/db";
 import { holdings, instruments, STARTING_BALANCE_PAISE } from "@/db/schema";
 import { eq, sql } from "drizzle-orm";
-import { UpstoxClient, UpstoxAuthError } from "@/lib/upstox/client";
+import {
+  MarketDataUnavailableError,
+  UpstoxClient,
+} from "@/lib/upstox/client";
+import {
+  marketDataCacheKey,
+  withMarketDataCache,
+} from "@/lib/upstox/cache";
 import { ensureWallet } from "@/lib/trading/engine";
 
 /**
  * GET /api/portfolio
  *
- * Wallet + holdings with live P&L. If the daily Upstox token has expired the
- * portfolio still returns (cost basis only) with livePrices: false, so the
- * dashboard never hard-fails just because market data is unavailable.
+ * Wallet + holdings with near-live P&L. If shared market data is unavailable,
+ * the portfolio still returns cost basis with livePrices: false.
  */
 export async function GET() {
   try {
@@ -44,8 +50,12 @@ export async function GET() {
     let prices: Record<string, number> | null = null;
     if (rows.length > 0) {
       try {
-        const client = new UpstoxClient(userId);
-        const res = await client.getLTP(rows.map((r) => r.instrumentKey));
+        const keys = rows.map((r) => r.instrumentKey).sort();
+        const res = await withMarketDataCache(
+          marketDataCacheKey("ltp", keys.join(",")),
+          3,
+          () => new UpstoxClient().getLTP(keys)
+        );
         prices = {};
         for (const quote of Object.values(res.data ?? {})) {
           const instrumentKey = quote.instrument_token || quote.instrument_key;
@@ -54,7 +64,7 @@ export async function GET() {
           }
         }
       } catch (error) {
-        if (!(error instanceof UpstoxAuthError)) throw error;
+        if (!(error instanceof MarketDataUnavailableError)) throw error;
         prices = null;
       }
     }

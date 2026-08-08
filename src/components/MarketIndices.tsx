@@ -20,6 +20,7 @@ interface IndexQuote {
 
 export function MarketIndices() {
     const [quotes, setQuotes] = useState<Map<string, IndexQuote>>(new Map());
+    const [unavailable, setUnavailable] = useState(false);
     const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
     const fetchIndices = async () => {
@@ -28,8 +29,7 @@ export function MarketIndices() {
             INDICES.forEach((i) => params.append("instrument_key", i.key));
             const res = await fetch(`/api/upstox/market/quotes?${params.toString()}`);
             if (!res.ok) {
-                const body = await res.json().catch(() => ({}));
-                if (body?.reconnect) window.dispatchEvent(new Event("paperx_upstox_unauthorized"));
+                setUnavailable(true);
                 return;
             }
             const result = await res.json();
@@ -52,14 +52,15 @@ export function MarketIndices() {
                 }
             });
             setQuotes(map);
+            setUnavailable(false);
         } catch {
-            // ignore transient failures; next poll retries
+            setUnavailable(true);
         }
     };
 
     useEffect(() => {
         const initialFetch = window.setTimeout(() => void fetchIndices(), 0);
-        timerRef.current = setInterval(fetchIndices, 15000);
+        timerRef.current = setInterval(fetchIndices, 5_000);
         return () => {
             window.clearTimeout(initialFetch);
             if (timerRef.current) clearInterval(timerRef.current);
@@ -93,6 +94,11 @@ export function MarketIndices() {
                     </div>
                 );
             })}
+            {unavailable && (
+                <span className="flex-shrink-0 text-xs text-amber-300">
+                    Market data temporarily unavailable
+                </span>
+            )}
         </div>
     );
 }

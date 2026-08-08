@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
-import { UpstoxAuthError } from "@/lib/upstox/client";
+import { MarketDataUnavailableError } from "@/lib/upstox/client";
 import {
   executeMarketOrder,
   TradeValidationError,
@@ -13,7 +13,7 @@ import {
  *
  * Executes a market order at the live Upstox price. Business rejections
  * (insufficient funds/shares) come back 200 with order.status = "REJECTED";
- * invalid input is 400; an expired Upstox session is 401 with reconnect: true.
+ * invalid input is 400; unavailable authoritative market data returns 503.
  */
 export async function POST(req: NextRequest) {
   try {
@@ -60,10 +60,10 @@ export async function POST(req: NextRequest) {
     if (error instanceof TradeValidationError) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
-    if (error instanceof UpstoxAuthError) {
+    if (error instanceof MarketDataUnavailableError) {
       return NextResponse.json(
-        { error: error.message, reconnect: true },
-        { status: 401 }
+        { error: error.message, marketDataUnavailable: true },
+        { status: 503 }
       );
     }
     console.error("Error executing order:", error);

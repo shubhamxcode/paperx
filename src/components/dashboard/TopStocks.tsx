@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Activity, Check, Plus, TrendingDown, TrendingUp } from "lucide-react";
+import { Activity, Check, CircleAlert, Plus, TrendingDown, TrendingUp } from "lucide-react";
 import { useWatchlist } from "@/lib/useWatchlist";
 import { StockLogo } from "@/components/StockLogo";
 import Link from "next/link";
@@ -43,6 +43,7 @@ export function TopStocks() {
     const [quotes, setQuotes] = useState<Map<string, Quote>>(new Map());
     const [filter, setFilter] = useState<MoverFilter>("Gainers");
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
     const [logos, setLogos] = useState<Map<string, string | null>>(new Map());
 
     useEffect(() => {
@@ -58,14 +59,15 @@ export function TopStocks() {
 
     useEffect(() => {
         const fetchQuotes = async () => {
+            if (document.visibilityState !== "visible") return;
             try {
+                setError(null);
                 const params = new URLSearchParams();
                 STOCKS.forEach((stock) => params.append("instrument_key", stock.key));
                 const response = await fetch(`/api/upstox/market/quotes?${params.toString()}`);
                 if (!response.ok) {
                     const body = await response.json().catch(() => ({}));
-                    if (body?.reconnect) window.dispatchEvent(new Event("paperx_upstox_unauthorized"));
-                    return;
+                    throw new Error(body.error || "Market data is temporarily unavailable");
                 }
                 const result = await response.json();
                 const next = new Map<string, Quote>();
@@ -87,13 +89,15 @@ export function TopStocks() {
                     }
                 });
                 setQuotes(next);
+            } catch (cause) {
+                setError(cause instanceof Error ? cause.message : "Market data is temporarily unavailable");
             } finally {
                 setLoading(false);
             }
         };
 
         void fetchQuotes();
-        const timer = window.setInterval(fetchQuotes, 20_000);
+        const timer = window.setInterval(fetchQuotes, 5_000);
         return () => window.clearInterval(timer);
     }, []);
 
@@ -121,6 +125,12 @@ export function TopStocks() {
 
     return (
         <div className="space-y-8">
+            {error && (
+                <div className="flex items-center gap-2 rounded-xl border border-amber-400/20 bg-amber-400/[0.07] px-4 py-3 text-sm text-amber-200">
+                    <CircleAlert className="h-4 w-4 shrink-0" />
+                    {error} Showing the most recent available snapshot.
+                </div>
+            )}
             <section aria-labelledby="most-traded-heading">
                 <div className="mb-4 flex items-end justify-between gap-4">
                     <div>
@@ -223,7 +233,7 @@ export function TopStocks() {
                 </div>
                 <div className="flex items-center gap-2 border-t border-white/[0.07] px-5 py-3 text-xs text-slate-500 sm:px-6">
                     <Activity className="h-3.5 w-3.5 text-cyan-400" />
-                    Prices refresh every 20 seconds; your watchlist uses the live Upstox feed.
+                    Prices refresh approximately every five seconds through PaperX.
                 </div>
             </section>
         </div>

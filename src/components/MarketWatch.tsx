@@ -50,7 +50,7 @@ export function MarketWatch() {
     const [marketData, setMarketData] = useState<Map<string, MarketData>>(new Map());
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [wsConnected, setWsConnected] = useState(false);
+    const [pollingActive, setPollingActive] = useState(false);
 
     // Search box state
     const [query, setQuery] = useState("");
@@ -68,15 +68,15 @@ export function MarketWatch() {
         }
     }, [instruments]);
 
-    // Subscribe through the one shared V3 socket for this browser session.
+    // Subscribe through the shared browser polling manager.
     useEffect(() => {
         if (instruments.length === 0) {
-            setWsConnected(false);
+            setPollingActive(false);
             return;
         }
         const cleanups = instruments.map((instrument) =>
             sharedUpstoxMarketFeed.subscribe(instrument.key, "ltpc", (update) => {
-                setWsConnected(true);
+                setPollingActive(true);
                 setMarketData((previous) => {
                     const next = new Map(previous);
                     const existing = next.get(instrument.key);
@@ -131,13 +131,8 @@ export function MarketWatch() {
 
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({})) as {
-                    reconnect?: boolean;
                     error?: string;
                 };
-                // Only a genuine Upstox session failure flips the UI to reconnect.
-                if (errorData?.reconnect) {
-                    window.dispatchEvent(new Event("paperx_upstox_unauthorized"));
-                }
                 throw new Error(errorData.error || "Failed to fetch quotes");
             }
 
@@ -219,14 +214,14 @@ export function MarketWatch() {
                 </div>
                 <div className="flex items-center gap-2">
                     <div
-                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg ${wsConnected
+                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg ${pollingActive
                             ? "bg-green-500/10 border border-green-500/30"
                             : "bg-gray-500/10 border border-gray-500/30"
                             }`}
                     >
-                        <Activity className={`w-3 h-3 ${wsConnected ? "text-green-400" : "text-gray-400"}`} />
-                        <span className={`text-xs ${wsConnected ? "text-green-400" : "text-gray-400"}`}>
-                            {wsConnected ? "Live" : "Offline"}
+                        <Activity className={`w-3 h-3 ${pollingActive ? "text-green-400" : "text-gray-400"}`} />
+                        <span className={`text-xs ${pollingActive ? "text-green-400" : "text-gray-400"}`}>
+                            {pollingActive ? "5s refresh" : "Unavailable"}
                         </span>
                     </div>
                     <button

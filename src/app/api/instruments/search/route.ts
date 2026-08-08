@@ -5,7 +5,11 @@ import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { db } from "@/db";
 import { searchInstruments } from "@/db/instruments";
 import { instruments } from "@/db/schema";
-import { UpstoxAuthError, UpstoxClient } from "@/lib/upstox/client";
+import { UpstoxClient } from "@/lib/upstox/client";
+import {
+    marketDataCacheKey,
+    withMarketDataCache,
+} from "@/lib/upstox/cache";
 import { instrumentDisplayName } from "@/lib/instruments/display-name";
 
 const MAX_QUERY_LENGTH = 80;
@@ -35,7 +39,15 @@ export async function GET(req: NextRequest) {
             if (q.trim().length < 2 || q.trim().length > 50) {
                 return NextResponse.json({ results: await searchInstruments(q) });
             }
-            const remote = await new UpstoxClient(session.user.id).searchInstruments(q.trim());
+            const query = q.trim();
+            const remote = await withMarketDataCache(
+                marketDataCacheKey(
+                    "instrument-search",
+                    query.toLocaleLowerCase("en-IN")
+                ),
+                30,
+                () => new UpstoxClient().searchInstruments(query)
+            );
             const rows = (remote.data ?? [])
                 .filter((item) => ["NSE_EQ", "BSE_EQ", "NSE_INDEX", "BSE_INDEX"].includes(item.segment))
                 .map((item) => ({
@@ -77,9 +89,7 @@ export async function GET(req: NextRequest) {
                 });
             }
         } catch (error) {
-            if (!(error instanceof UpstoxAuthError)) {
-                console.warn("Upstox instrument search unavailable; using local mirror", error);
-            }
+            console.warn("Upstox instrument search unavailable; using local mirror", error);
         }
 
         const results = await searchInstruments(q);

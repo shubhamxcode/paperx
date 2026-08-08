@@ -127,7 +127,7 @@ export async function executeMarketOrder(
   }
 
   const exchange = instrument.exchange === "BSE" ? "BSE" : "NSE";
-  const client = new UpstoxClient(userId);
+  const client = new UpstoxClient();
   const marketStatus = await client.getMarketStatus(exchange);
   if (marketStatus.data.status !== "NORMAL_OPEN") {
     throw new TradeValidationError(MARKET_CLOSED_MESSAGE);

@@ -18,7 +18,6 @@ import {
 import toast, { Toaster } from "react-hot-toast";
 import { DashboardNav, type DashboardTab, type InstrumentSearchResult } from "@/components/dashboard/DashboardNav";
 import { StockLogo } from "@/components/StockLogo";
-import { UpstoxConnect } from "@/components/UpstoxConnect";
 import { useWatchlist } from "@/lib/useWatchlist";
 import { sharedUpstoxMarketFeed, type LiveMarketUpdate } from "@/lib/upstox/market-feed";
 import { getScheduledMarketStatus } from "@/lib/trading/market-hours";
@@ -67,7 +66,11 @@ type StockData = {
   } | null;
   ratios: Array<{ name: string; company_value: string; sector_value: string }>;
   income: { quarterly: IncomeData | null; yearly: IncomeData | null };
-  availability: { quote: boolean; fundamentals: boolean };
+  availability: {
+    quote: boolean;
+    fundamentals: boolean;
+    marketDataUnavailable?: boolean;
+  };
 };
 
 const RANGES: Range[] = ["1D", "1W", "1M", "3M", "1Y", "5Y"];
@@ -211,7 +214,6 @@ function OrderTicket({ data, livePrice, onComplete }: { data: StockData; livePri
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) {
-        if (body.reconnect) window.dispatchEvent(new Event("paperx_upstox_unauthorized"));
         throw new Error(body.error || "Order failed");
       }
       if (body.order?.status === "REJECTED") throw new Error(body.order.reason || "Order rejected");
@@ -293,7 +295,6 @@ export function StockDetailClient({ instrumentKey }: { instrumentKey: string }) 
     const response = await fetch(`/api/stocks/${encodeURIComponent(instrumentKey)}`, { cache: "no-store" });
     const body = await response.json().catch(() => ({}));
     if (!response.ok) {
-      if (body.reconnect) window.dispatchEvent(new Event("paperx_upstox_unauthorized"));
       throw new Error(body.error || "Could not load this stock");
     }
     return body as StockData;
@@ -399,8 +400,14 @@ export function StockDetailClient({ instrumentKey }: { instrumentKey: string }) 
   return (
     <div className="paperx-dashboard min-h-screen bg-[#07090b] text-slate-100">
       <Toaster position="top-right" />
-      <DashboardNav userName={session?.user?.name} userEmail={session?.user?.email} userImage={session?.user?.image} activeTab={activeTab} onTabChange={selectTab} onInstrumentSelect={selectInstrument} upstoxSlot={<UpstoxConnect />} />
+      <DashboardNav userName={session?.user?.name} userEmail={session?.user?.email} userImage={session?.user?.image} activeTab={activeTab} onTabChange={selectTab} onInstrumentSelect={selectInstrument} />
       <main id="main-content" className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
+        {data.availability.marketDataUnavailable && (
+          <div className="mb-5 flex items-center gap-2 rounded-xl border border-amber-400/20 bg-amber-400/[0.07] px-4 py-3 text-sm text-amber-200">
+            <CircleAlert className="h-4 w-4 shrink-0" />
+            Live market data is temporarily unavailable. Trading is disabled until PaperX can verify a fresh price.
+          </div>
+        )}
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
           <div className="min-w-0">
             <section className="flex flex-wrap items-start justify-between gap-5 border-b border-white/10 pb-6">
@@ -408,7 +415,7 @@ export function StockDetailClient({ instrumentKey }: { instrumentKey: string }) 
                 <StockLogo symbol={data.instrument.tradingSymbol} logoUrl={data.instrument.logoUrl} size={56} />
                 <div className="min-w-0"><p className="text-sm text-slate-500">{data.instrument.tradingSymbol} · {data.instrument.exchange}</p><h1 className="mt-1 truncate text-2xl font-semibold tracking-tight text-white">{data.instrument.name || data.instrument.tradingSymbol}</h1><div className="mt-2 flex flex-wrap items-baseline gap-2"><span className="text-2xl font-semibold text-white">{money(livePrice)}</span><span className={`text-sm ${positive ? "text-emerald-400" : "text-red-400"}`}>{change == null ? "—" : `${positive ? "+" : ""}${change.toFixed(2)} (${positive ? "+" : ""}${(changePercent ?? 0).toFixed(2)}%)`}</span></div></div>
               </div>
-              <div className="flex items-center gap-2"><span className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs ${live ? "border-emerald-400/25 bg-emerald-400/10 text-emerald-300" : "border-white/10 text-slate-500"}`}>{live ? <Wifi className="h-3.5 w-3.5"/> : <WifiOff className="h-3.5 w-3.5"/>}{live ? "Live V3" : "REST snapshot"}</span><button onClick={() => void toggleWatchlist()} className="paperx-icon-button" aria-label={inWatchlist ? "Remove from watchlist" : "Add to watchlist"}>{inWatchlist ? <BookmarkCheck className="h-4 w-4 text-cyan-300"/> : <Bookmark className="h-4 w-4"/>}</button></div>
+              <div className="flex items-center gap-2"><span className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs ${live ? "border-emerald-400/25 bg-emerald-400/10 text-emerald-300" : "border-white/10 text-slate-500"}`}>{live ? <Wifi className="h-3.5 w-3.5"/> : <WifiOff className="h-3.5 w-3.5"/>}{live ? "5s price refresh" : "Price snapshot"}</span><button onClick={() => void toggleWatchlist()} className="paperx-icon-button" aria-label={inWatchlist ? "Remove from watchlist" : "Add to watchlist"}>{inWatchlist ? <BookmarkCheck className="h-4 w-4 text-cyan-300"/> : <Bookmark className="h-4 w-4"/>}</button></div>
             </section>
 
             <section className="py-6" aria-labelledby="price-chart-heading">

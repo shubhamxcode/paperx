@@ -23,6 +23,7 @@ import { consumeTutorLimit } from "@/lib/ai/rate-limit";
 import { soujiDrawingSchema, tutorRequestSchema } from "@/lib/ai/schemas";
 import { prohibitedLearningRequest, sanitizeOverlays, TUTOR_INSTRUCTIONS } from "@/lib/ai/safety";
 import { serverEnv } from "@/lib/env/server";
+import { MarketDataUnavailableError } from "@/lib/upstox/client";
 
 export const maxDuration = 60;
 
@@ -133,7 +134,7 @@ export async function POST(request: Request) {
       tools: {
         google_search: google.tools.googleSearch({}),
         drawChart: tool({
-          description: "Draw evidence-backed levels, zones, or candle markers on the currently visible PaperX chart. Use this whenever a drawing would make a chart explanation clearer.",
+          description: "Draw evidence-backed levels, zones, or candle markers on the current stock's selected PaperX chart. Every value must be grounded in PAPERX CONTEXT for this turn.",
           inputSchema: soujiDrawingSchema,
           execute: async ({ overlays, explanation }) => ({
             overlays: sanitizeOverlays(overlays, candles),
@@ -181,6 +182,12 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error("Souji failed:", error);
     await saveUsage({ userId: session.user.id, feature: "SOUJI", model: serverEnv.geminiModel, latencyMs: Date.now() - startedAt, outcome: "ERROR" }).catch(() => undefined);
+    if (error instanceof MarketDataUnavailableError) {
+      return Response.json({
+        error: "Souji cannot verify this stock right now because live market data is temporarily unavailable. Please try again shortly.",
+        marketDataUnavailable: true,
+      }, { status: 503 });
+    }
     return Response.json({
       error: "Souji is unavailable right now. Your chart and paper account were not changed.",
       ...(process.env.NODE_ENV === "development" ? { detail: error instanceof Error ? error.message : String(error) } : {}),

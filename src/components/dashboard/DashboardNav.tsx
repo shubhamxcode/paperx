@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { Search, Bell, RefreshCw, LoaderCircle, X } from "lucide-react";
@@ -19,7 +19,6 @@ interface DashboardNavProps {
     activeTab: DashboardTab;
     onTabChange: (tab: DashboardTab) => void;
     onInstrumentSelect: (instrument: InstrumentSearchResult) => Promise<void>;
-    upstoxSlot?: ReactNode;
 }
 
 export interface InstrumentSearchResult {
@@ -38,7 +37,6 @@ export function DashboardNav({
     activeTab,
     onTabChange,
     onInstrumentSelect,
-    upstoxSlot,
 }: DashboardNavProps) {
     const searchRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
@@ -287,9 +285,6 @@ export function DashboardNav({
                         })}
                     </nav>
 
-                    <div className="flex items-center gap-2 py-2">
-                        {upstoxSlot}
-                    </div>
                 </div>
             </div>
         </header>

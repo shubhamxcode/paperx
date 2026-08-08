@@ -59,15 +59,6 @@ export const sessions = pgTable("session", {
   expires: timestamp("expires", { mode: "date" }).notNull(),
 });
 
-export const upstoxTokens=pgTable("upstox_token",{
-  id:text("id").primaryKey().$defaultFn(()=>crypto.randomUUID()),
-  userId:text("userId").notNull().references(()=>users.id,{onDelete:"cascade"}).unique(),
-  accessToken: text("accessToken").notNull(),
-  expireAt:timestamp("expireAt",{mode:"date"}).notNull(),
-  createdAt:timestamp("createdAt",{mode:"date"}).notNull().defaultNow(),
-  updatedAt:timestamp("updatedAt",{mode:"date"}).notNull().defaultNow(),
-})
-
 // =============================================
 // Upstox Instruments (mirrored from the daily master file)
 // =============================================
